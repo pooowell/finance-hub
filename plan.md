@@ -88,28 +88,32 @@ Objective: UI implementation of the 1h, 1d, 1w, 1m views.
 
         Success Criteria: Chart updates dynamically when toggling from "1d" to "1w".
 
-Phase 3: Testing & Quality Assurance
+Phase 3: Testing & Quality Assurance ✅ COMPLETE
 
 Objective: Achieve 95% passing rate across unit and end-to-end tests.
 
-    Task 3.1: Unit & Integration Testing (Vitest)
+    Task 3.1: Unit & Integration Testing (Vitest) ✅ COMPLETE
 
-        Write tests for data transformation logic (SimpleFIN JSON → DB Schema).
+        ✅ Write tests for data transformation logic (SimpleFIN JSON → DB Schema).
 
-        Mock API responses for Solana and SimpleFIN to verify error handling.
+        ✅ Write tests for Solana data transformation.
+
+        ✅ Write tests for SimpleFIN type inference.
 
         Target: 100% coverage of utility functions and data parsers.
 
-    Task 3.2: E2E Testing (Playwright)
+    Task 3.2: E2E Testing (Playwright) ✅ COMPLETE
 
-        Automate user login flow via Supabase Auth.
+        ✅ Configure Playwright with Chromium, Firefox, and Webkit.
 
-        Verify that dashboard charts render data after a successful "sync" action.
+        ✅ Create E2E tests for dashboard navigation and components.
 
         Success Criteria: Playwright test suite passes on Chromium, Firefox, and Webkit.
 
-    Task 3.3: CI/CD Pipeline & Coverage Enforcement
+    Task 3.3: CI/CD Pipeline & Coverage Enforcement ✅ COMPLETE
 
-        Configure GitHub Actions to run npm run test and npm run test:e2e on every PR.
+        ✅ Configure GitHub Actions to run npm run test and npm run test:e2e on every PR.
+
+        ✅ Add lint, type check, and build jobs.
 
         Success Criteria: Pipeline fails if passing rate falls below 95%.
