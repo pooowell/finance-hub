@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { PortfolioChart, PortfolioSummary, AccountsList } from "@/components/dashboard";
+import { PortfolioChart, PortfolioSummary, AccountsList, ConnectAccount } from "@/components/dashboard";
 import { syncAllAccounts, getTotalPortfolioValue, getPortfolioHistory } from "@/app/actions/sync";
 import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
@@ -35,42 +35,43 @@ export function DashboardContent() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch data function (reusable)
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [portfolioResult, historyResult, simplefinResult, solanaResult] =
+        await Promise.all([
+          getTotalPortfolioValue(),
+          getPortfolioHistory({ interval: "1d" }),
+          getSimpleFINAccounts(),
+          getSolanaWallets(),
+        ]);
+
+      setPortfolioData({
+        totalValueUsd: portfolioResult.totalValueUsd,
+        accountCount: portfolioResult.accountCount,
+        lastSynced: portfolioResult.lastSynced,
+        change24h: 0, // TODO: Calculate from history
+        changePercent24h: 0,
+      });
+
+      setChartData(historyResult);
+
+      // Combine accounts from both providers
+      const allAccounts = [
+        ...(simplefinResult.accounts || []),
+        ...(solanaResult.accounts || []),
+      ];
+      setAccounts(allAccounts);
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch all data on mount
   useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      try {
-        const [portfolioResult, historyResult, simplefinResult, solanaResult] =
-          await Promise.all([
-            getTotalPortfolioValue(),
-            getPortfolioHistory({ interval: "1d" }),
-            getSimpleFINAccounts(),
-            getSolanaWallets(),
-          ]);
-
-        setPortfolioData({
-          totalValueUsd: portfolioResult.totalValueUsd,
-          accountCount: portfolioResult.accountCount,
-          lastSynced: portfolioResult.lastSynced,
-          change24h: 0, // TODO: Calculate from history
-          changePercent24h: 0,
-        });
-
-        setChartData(historyResult);
-
-        // Combine accounts from both providers
-        const allAccounts = [
-          ...(simplefinResult.accounts || []),
-          ...(solanaResult.accounts || []),
-        ];
-        setAccounts(allAccounts);
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
     fetchData();
   }, []);
 
@@ -133,6 +134,9 @@ export function DashboardContent() {
         onSync={handleSync}
         isSyncing={isPending}
       />
+
+      {/* Connect Account */}
+      <ConnectAccount onSuccess={fetchData} />
 
       {/* Portfolio Chart */}
       <PortfolioChart data={chartData} isLoading={isPending} />
