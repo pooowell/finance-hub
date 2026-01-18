@@ -1,0 +1,99 @@
+Project Architecture Overview
+
+The application will act as a centralized aggregator. Since SimpleFIN acts as a bridge for traditional institutions (Chase, Capital One, etc.), the hub will require a custom adapter for on-chain Solana data.
+
+Phase 1: Infrastructure & SimpleFIN Bridge
+
+Objective: Establish the secure connection to traditional financial data via the SimpleFIN protocol.
+
+ Tech Stack Definition
+
+    Frontend/API: Next.js (App Router, TypeScript)
+
+    Backend/Database: Supabase (PostgreSQL, Auth, Edge Functions)
+
+    Traditional Finance Bridge: SimpleFIN API
+
+    On-Chain Data: Solana Web3.js / Helius RPC
+
+    Testing: Vitest (Unit/Integration) & Playwright (E2E)
+
+Phase 0: Core Infrastructure & Supabase Schema
+
+Objective: Scaffold the Next.js environment and define the Supabase data layer.
+
+    Task 0.1: Project Initialization ✅ COMPLETE
+
+        ✅ Initialize Next.js with TypeScript, Tailwind CSS, and Shadcn/UI.
+
+        ⏳ Set up Supabase CLI and link the local environment. (deferred to Task 0.2)
+
+    Task 0.2: Database Modeling
+
+        Create profiles table (linked to auth.users).
+
+        Create accounts table: id, user_id, provider (SimpleFIN/Solana), name, type, balance_usd.
+
+        Create snapshots table: id, account_id, timestamp, value_usd (for time-series charting).
+
+        Success Criteria: supabase db remote commit completes without errors.
+
+Phase 1: SimpleFIN & Solana Integration
+
+Objective: Securely ingest data from all prioritized sources.
+
+    Task 1.1: SimpleFIN Adapter
+
+        Implement Server Action to fetch and cache balances from Chase, Capital One, Robinhood, Schwab, and Coinbase via SimpleFIN.
+
+    Task 1.2: Solana Wallet Aggregator
+
+        Implement a service using @solana/web3.js to fetch SOL and SPL token balances.
+
+        Integrate a price feed (e.g., Jupiter or CoinGecko) to convert token balances to USD.
+
+    Task 1.3: Data Synchronization Worker
+
+        Build a Supabase Edge Function to poll all providers and write snapshots to the database.
+
+Phase 2: Dashboard & Time-Series Visuals
+
+Objective: UI implementation of the 1h, 1d, 1w, 1m views.
+
+    Task 2.1: Chart Data Aggregation
+
+        Write a Postgres function or API route to aggregate snapshots into time-bucketed intervals (1h, 1d, etc.).
+
+    Task 2.2: Frontend Dashboard
+
+        Build the main dashboard using Recharts or Chart.js.
+
+        Implement timeframe toggle buttons that trigger data re-fetching.
+
+        Success Criteria: Chart updates dynamically when toggling from "1d" to "1w".
+
+Phase 3: Testing & Quality Assurance
+
+Objective: Achieve 95% passing rate across unit and end-to-end tests.
+
+    Task 3.1: Unit & Integration Testing (Vitest)
+
+        Write tests for data transformation logic (SimpleFIN JSON → DB Schema).
+
+        Mock API responses for Solana and SimpleFIN to verify error handling.
+
+        Target: 100% coverage of utility functions and data parsers.
+
+    Task 3.2: E2E Testing (Playwright)
+
+        Automate user login flow via Supabase Auth.
+
+        Verify that dashboard charts render data after a successful "sync" action.
+
+        Success Criteria: Playwright test suite passes on Chromium, Firefox, and Webkit.
+
+    Task 3.3: CI/CD Pipeline & Coverage Enforcement
+
+        Configure GitHub Actions to run npm run test and npm run test:e2e on every PR.
+
+        Success Criteria: Pipeline fails if passing rate falls below 95%.
