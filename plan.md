@@ -28,15 +28,17 @@ Objective: Scaffold the Next.js environment and define the Supabase data layer.
 
         ⏳ Set up Supabase CLI and link the local environment. (deferred to Task 0.2)
 
-    Task 0.2: Database Modeling
+    Task 0.2: Database Modeling ✅ COMPLETE
 
-        Create profiles table (linked to auth.users).
+        ✅ Create profiles table (linked to auth.users).
 
-        Create accounts table: id, user_id, provider (SimpleFIN/Solana), name, type, balance_usd.
+        ✅ Create accounts table: id, user_id, provider (SimpleFIN/Solana), name, type, balance_usd.
 
-        Create snapshots table: id, account_id, timestamp, value_usd (for time-series charting).
+        ✅ Create snapshots table: id, account_id, timestamp, value_usd (for time-series charting).
 
-        Success Criteria: supabase db remote commit completes without errors.
+        ✅ Set up Supabase CLI and client libraries.
+
+        Success Criteria: supabase db remote commit completes without errors. (Migration ready)
 
 Phase 1: SimpleFIN & Solana Integration
 
