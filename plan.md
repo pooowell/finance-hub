@@ -60,9 +60,13 @@ Objective: Securely ingest data from all prioritized sources.
 
         ✅ Server Actions for connecting, syncing, and removing Solana wallets.
 
-    Task 1.3: Data Synchronization Worker
+    Task 1.3: Data Synchronization Worker ✅ COMPLETE
 
-        Build a Supabase Edge Function to poll all providers and write snapshots to the database.
+        ✅ Build a Supabase Edge Function to poll all providers and write snapshots to the database.
+
+        ✅ Unified sync action for triggering all provider syncs.
+
+        ✅ Portfolio history and value aggregation functions.
 
 Phase 2: Dashboard & Time-Series Visuals
 
