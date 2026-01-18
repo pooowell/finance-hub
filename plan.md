@@ -88,6 +88,22 @@ Objective: UI implementation of the 1h, 1d, 1w, 1m views.
 
         Success Criteria: Chart updates dynamically when toggling from "1d" to "1w".
 
+Phase 2.5: User Authentication ✅ COMPLETE
+
+Objective: Implement user authentication flow.
+
+    Task 2.3: Authentication UI ✅ COMPLETE
+
+        ✅ Create auth form component for email/password sign in and sign up.
+
+        ✅ Add auth callback route for email confirmation.
+
+        ✅ Update dashboard to check auth state and show auth form if not logged in.
+
+        ✅ Add sign out button to dashboard.
+
+        Success Criteria: Users can sign in/up and access their connected accounts.
+
 Phase 3: Testing & Quality Assurance ✅ COMPLETE
 
 Objective: Achieve 95% passing rate across unit and end-to-end tests.

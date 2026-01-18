@@ -1,5 +1,7 @@
 import { Suspense } from "react";
+import { createClient } from "@/lib/supabase/server";
 import { DashboardContent } from "./dashboard-content";
+import { AuthForm } from "@/components/auth";
 
 export const metadata = {
   title: "Dashboard | Finance Hub",
@@ -42,13 +44,20 @@ function DashboardSkeleton() {
   );
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-4xl">
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-      <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent />
-      </Suspense>
+      {user ? (
+        <Suspense fallback={<DashboardSkeleton />}>
+          <DashboardContent />
+        </Suspense>
+      ) : (
+        <AuthForm />
+      )}
     </main>
   );
 }

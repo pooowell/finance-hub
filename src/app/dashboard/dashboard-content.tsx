@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
+import { LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { PortfolioChart, PortfolioSummary, AccountsList, ConnectAccount } from "@/components/dashboard";
 import { syncAllAccounts, getTotalPortfolioValue, getPortfolioHistory } from "@/app/actions/sync";
 import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
+import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
 
 type Account = Database["public"]["Tables"]["accounts"]["Row"];
@@ -75,6 +78,13 @@ export function DashboardContent() {
     fetchData();
   }, []);
 
+  // Handle sign out
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.reload();
+  };
+
   // Handle sync
   const handleSync = () => {
     startTransition(async () => {
@@ -124,6 +134,14 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-6">
+      {/* Sign Out */}
+      <div className="flex justify-end">
+        <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </Button>
+      </div>
+
       {/* Portfolio Summary */}
       <PortfolioSummary
         totalValue={portfolioData.totalValueUsd}
