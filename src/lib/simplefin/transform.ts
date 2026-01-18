@@ -2,12 +2,13 @@
  * Transform SimpleFIN data to database schema
  */
 
-import type { SimpleFINAccount } from "@/types/simplefin";
+import type { SimpleFINAccount, SimpleFINTransaction } from "@/types/simplefin";
 import { inferAccountType } from "@/types/simplefin";
 import type { Database } from "@/types/database";
 
 type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
 type SnapshotInsert = Database["public"]["Tables"]["snapshots"]["Insert"];
+type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
 /**
  * Transforms a SimpleFIN account to our database account format
@@ -58,4 +59,33 @@ export function transformAccounts(
   userId: string
 ): AccountInsert[] {
   return simplefinAccounts.map((account) => transformAccount(account, userId));
+}
+
+/**
+ * Transforms a SimpleFIN transaction to our database transaction format
+ */
+export function transformTransaction(
+  transaction: SimpleFINTransaction,
+  accountId: string
+): TransactionInsert {
+  return {
+    account_id: accountId,
+    external_id: transaction.id,
+    posted_at: new Date(transaction.posted * 1000).toISOString(),
+    amount: parseFloat(transaction.amount),
+    description: transaction.description,
+    payee: transaction.payee ?? null,
+    memo: transaction.memo ?? null,
+    pending: transaction.pending ?? false,
+  };
+}
+
+/**
+ * Transforms multiple SimpleFIN transactions to database format
+ */
+export function transformTransactions(
+  transactions: SimpleFINTransaction[],
+  accountId: string
+): TransactionInsert[] {
+  return transactions.map((tx) => transformTransaction(tx, accountId));
 }

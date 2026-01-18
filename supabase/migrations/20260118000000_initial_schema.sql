@@ -1,8 +1,8 @@
 -- Finance Hub Initial Schema
 -- Task 0.2: Database Modeling
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- Note: Using gen_random_uuid() which is built into PostgreSQL 13+
+-- No extension needed
 
 -- Profiles table (linked to auth.users)
 create table public.profiles (
@@ -31,7 +31,7 @@ create type public.provider_type as enum ('SimpleFIN', 'Solana');
 create type public.account_type as enum ('checking', 'savings', 'credit', 'investment', 'crypto', 'other');
 
 create table public.accounts (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   provider provider_type not null,
   name text not null,
@@ -66,7 +66,7 @@ create policy "Users can delete own accounts"
 
 -- Snapshots table (for time-series charting)
 create table public.snapshots (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   account_id uuid references public.accounts(id) on delete cascade not null,
   timestamp timestamp with time zone default timezone('utc'::text, now()) not null,
   value_usd numeric(18, 2) not null,

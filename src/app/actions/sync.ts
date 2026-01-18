@@ -83,8 +83,9 @@ export async function getTotalPortfolioValue(): Promise<{
 
   const { data: accounts, error } = await supabase
     .from("accounts")
-    .select("balance_usd, last_synced_at")
-    .eq("user_id", user.id);
+    .select("balance_usd, last_synced_at, include_in_net_worth")
+    .eq("user_id", user.id)
+    .eq("include_in_net_worth", true);
 
   if (error || !accounts) {
     return { totalValueUsd: 0, accountCount: 0, lastSynced: null };
@@ -128,11 +129,12 @@ export async function getPortfolioHistory(options?: {
     return [];
   }
 
-  // Get user's account IDs
+  // Get user's account IDs (only those included in net worth)
   const { data: accounts } = await supabase
     .from("accounts")
     .select("id")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("include_in_net_worth", true);
 
   if (!accounts || accounts.length === 0) {
     return [];

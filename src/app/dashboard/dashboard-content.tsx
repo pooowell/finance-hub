@@ -3,7 +3,14 @@
 import { useState, useEffect, useTransition } from "react";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PortfolioChart, PortfolioSummary, AccountsList, ConnectAccount } from "@/components/dashboard";
+import {
+  TabNavigation,
+  DashboardTab,
+  AccountsTab,
+  TransactionsTab,
+  SettingsTab,
+  type TabType,
+} from "@/components/dashboard";
 import { syncAllAccounts, getTotalPortfolioValue, getPortfolioHistory } from "@/app/actions/sync";
 import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
@@ -27,6 +34,8 @@ interface ChartDataPoint {
 
 export function DashboardContent() {
   const [isPending, startTransition] = useTransition();
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
+  const [showHidden, setShowHidden] = useState(false);
   const [portfolioData, setPortfolioData] = useState<PortfolioData>({
     totalValueUsd: 0,
     accountCount: 0,
@@ -121,6 +130,34 @@ export function DashboardContent() {
     });
   };
 
+  // Handle account update (refresh accounts after update)
+  const handleAccountUpdate = () => {
+    startTransition(async () => {
+      try {
+        const [portfolioResult, simplefinResult, solanaResult] = await Promise.all([
+          getTotalPortfolioValue(),
+          getSimpleFINAccounts(),
+          getSolanaWallets(),
+        ]);
+
+        setPortfolioData((prev) => ({
+          ...prev,
+          totalValueUsd: portfolioResult.totalValueUsd,
+          accountCount: portfolioResult.accountCount,
+          lastSynced: portfolioResult.lastSynced,
+        }));
+
+        const allAccounts = [
+          ...(simplefinResult.accounts || []),
+          ...(solanaResult.accounts || []),
+        ];
+        setAccounts(allAccounts);
+      } catch (error) {
+        console.error("Error refreshing accounts:", error);
+      }
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -134,7 +171,7 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      {/* Sign Out */}
+      {/* Header with Sign Out */}
       <div className="flex justify-end">
         <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
           <LogOut className="h-4 w-4" />
@@ -142,25 +179,32 @@ export function DashboardContent() {
         </Button>
       </div>
 
-      {/* Portfolio Summary */}
-      <PortfolioSummary
-        totalValue={portfolioData.totalValueUsd}
-        change24h={portfolioData.change24h}
-        changePercent24h={portfolioData.changePercent24h}
-        accountCount={portfolioData.accountCount}
-        lastSynced={portfolioData.lastSynced}
-        onSync={handleSync}
-        isSyncing={isPending}
-      />
+      {/* Tab Navigation */}
+      <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Connect Account */}
-      <ConnectAccount onSuccess={fetchData} />
+      {/* Tab Content */}
+      {activeTab === "dashboard" && (
+        <DashboardTab
+          portfolioData={portfolioData}
+          chartData={chartData}
+          isSyncing={isPending}
+          onSync={handleSync}
+          onAccountConnect={fetchData}
+        />
+      )}
 
-      {/* Portfolio Chart */}
-      <PortfolioChart data={chartData} isLoading={isPending} />
+      {activeTab === "accounts" && (
+        <AccountsTab
+          accounts={accounts}
+          showHidden={showHidden}
+          onShowHiddenChange={setShowHidden}
+          onAccountUpdate={handleAccountUpdate}
+        />
+      )}
 
-      {/* Accounts List */}
-      <AccountsList accounts={accounts} />
+      {activeTab === "transactions" && <TransactionsTab />}
+
+      {activeTab === "settings" && <SettingsTab />}
     </div>
   );
 }

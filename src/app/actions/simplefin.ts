@@ -5,12 +5,38 @@ import {
   claimSetupToken,
   fetchAccounts,
   transformAccounts,
+  transformTransactions,
   createSnapshot,
 } from "@/lib/simplefin";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
+import type { User } from "@supabase/supabase-js";
 
 type Account = Database["public"]["Tables"]["accounts"]["Row"];
+
+/**
+ * Ensure user profile exists (for users created before migration)
+ */
+async function ensureProfileExists(supabase: Awaited<ReturnType<typeof createClient>>, user: User) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) {
+    const { error } = await supabase.from("profiles").insert({
+      id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name,
+      avatar_url: user.user_metadata?.avatar_url,
+    });
+    if (error) {
+      console.error("Error creating profile:", error);
+      throw new Error("Failed to create user profile");
+    }
+  }
+}
 
 /**
  * Connect a SimpleFIN account using a setup token
@@ -29,12 +55,28 @@ export async function connectSimpleFIN(setupToken: string) {
   }
 
   try {
-    // Claim the setup token to get access URL
-    const accessUrl = await claimSetupToken(setupToken);
+    // Ensure profile exists
+    await ensureProfileExists(supabase, user);
 
-    // Note: In production, store accessUrl securely using Supabase Vault
-    // or encrypted in a separate credentials table.
-    // For now, we proceed directly to syncing.
+    // Claim the setup token to get access URL
+    let accessUrl: string;
+    try {
+      accessUrl = await claimSetupToken(setupToken);
+    } catch (claimError) {
+      console.error("SimpleFIN claim error:", claimError);
+      const message = claimError instanceof Error ? claimError.message : "Unknown error";
+      return { error: `Failed to claim token: ${message}` };
+    }
+
+    // Store the access URL for future syncs
+    await supabase
+      .from("credentials")
+      .upsert({
+        user_id: user.id,
+        provider: "SimpleFIN",
+        access_token: accessUrl,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,provider" });
 
     // Fetch and sync accounts immediately
     const syncResult = await syncSimpleFINAccounts(accessUrl);
@@ -46,7 +88,8 @@ export async function connectSimpleFIN(setupToken: string) {
     return { success: true, accountCount: syncResult.accountCount };
   } catch (error) {
     console.error("SimpleFIN connection error:", error);
-    return { error: "Failed to connect SimpleFIN" };
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: `Failed to connect SimpleFIN: ${message}` };
   }
 }
 
@@ -67,14 +110,38 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     return { error: "Unauthorized" };
   }
 
-  // In production, retrieve accessUrl from secure storage if not provided
+  // Retrieve accessUrl from credentials table if not provided
   if (!accessUrl) {
-    return { error: "No SimpleFIN credentials found" };
+    const { data: credentials } = await supabase
+      .from("credentials")
+      .select("access_token")
+      .eq("user_id", user.id)
+      .eq("provider", "SimpleFIN")
+      .single();
+
+    if (!credentials?.access_token) {
+      return { error: "No SimpleFIN credentials found. Please reconnect your account." };
+    }
+
+    accessUrl = credentials.access_token;
   }
 
   try {
-    // Fetch accounts from SimpleFIN
-    const accountSet = await fetchAccounts({ accessUrl });
+    // Ensure profile exists
+    await ensureProfileExists(supabase, user);
+
+    // Fetch accounts from SimpleFIN (with transactions from last 90 days)
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 90);
+
+    let accountSet;
+    try {
+      accountSet = await fetchAccounts({ accessUrl }, { startDate });
+    } catch (fetchError) {
+      console.error("SimpleFIN fetch error:", fetchError);
+      const message = fetchError instanceof Error ? fetchError.message : "Unknown error";
+      return { error: `Failed to fetch accounts: ${message}` };
+    }
 
     if (accountSet.errors.length > 0) {
       console.warn("SimpleFIN returned errors:", accountSet.errors);
@@ -84,7 +151,11 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     const accounts = transformAccounts(accountSet.accounts, user.id);
 
     // Upsert accounts (update existing or insert new)
-    for (const account of accounts) {
+    for (let i = 0; i < accounts.length; i++) {
+      const account = accounts[i];
+      const simplefinAccount = accountSet.accounts[i];
+      let accountId: string;
+
       // Check if account already exists
       const { data: existingAccount } = await supabase
         .from("accounts")
@@ -94,6 +165,8 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
         .single();
 
       if (existingAccount) {
+        accountId = existingAccount.id;
+
         // Update existing account
         const { error: updateError } = await supabase
           .from("accounts")
@@ -131,13 +204,25 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
           continue;
         }
 
+        accountId = newAccount.id;
+
         // Create initial snapshot
-        if (newAccount) {
-          const snapshot = createSnapshot(
-            newAccount.id,
-            account.balance_usd ?? 0
-          );
-          await supabase.from("snapshots").insert(snapshot);
+        const snapshot = createSnapshot(
+          newAccount.id,
+          account.balance_usd ?? 0
+        );
+        await supabase.from("snapshots").insert(snapshot);
+      }
+
+      // Sync transactions for this account
+      if (simplefinAccount.transactions && simplefinAccount.transactions.length > 0) {
+        const transactions = transformTransactions(simplefinAccount.transactions, accountId);
+
+        // Upsert transactions (ignore conflicts on unique constraint)
+        for (const tx of transactions) {
+          await supabase
+            .from("transactions")
+            .upsert(tx, { onConflict: "account_id,external_id" });
         }
       }
     }
@@ -146,7 +231,8 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     return { success: true, accountCount: accounts.length };
   } catch (error) {
     console.error("SimpleFIN sync error:", error);
-    return { error: "Failed to sync accounts" };
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: `Failed to sync accounts: ${message}` };
   }
 }
 

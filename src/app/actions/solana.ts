@@ -9,8 +9,33 @@ import {
 } from "@/lib/solana";
 import { revalidatePath } from "next/cache";
 import type { Database } from "@/types/database";
+import type { User } from "@supabase/supabase-js";
 
 type Account = Database["public"]["Tables"]["accounts"]["Row"];
+
+/**
+ * Ensure user profile exists (for users created before migration)
+ */
+async function ensureProfileExists(supabase: Awaited<ReturnType<typeof createClient>>, user: User) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile) {
+    const { error } = await supabase.from("profiles").insert({
+      id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name,
+      avatar_url: user.user_metadata?.avatar_url,
+    });
+    if (error) {
+      console.error("Error creating profile:", error);
+      throw new Error("Failed to create user profile");
+    }
+  }
+}
 
 /**
  * Connect a Solana wallet by address
@@ -34,6 +59,9 @@ export async function connectSolanaWallet(walletAddress: string) {
   }
 
   try {
+    // Ensure profile exists
+    await ensureProfileExists(supabase, user);
+
     // Check if wallet already connected
     const { data: existingAccount } = await supabase
       .from("accounts")
