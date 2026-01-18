@@ -72,15 +72,19 @@ Phase 2: Dashboard & Time-Series Visuals
 
 Objective: UI implementation of the 1h, 1d, 1w, 1m views.
 
-    Task 2.1: Chart Data Aggregation
+    Task 2.1: Chart Data Aggregation ✅ COMPLETE
 
-        Write a Postgres function or API route to aggregate snapshots into time-bucketed intervals (1h, 1d, etc.).
+        ✅ Write a Postgres function or API route to aggregate snapshots into time-bucketed intervals (1h, 1d, etc.).
 
-    Task 2.2: Frontend Dashboard
+    Task 2.2: Frontend Dashboard ✅ COMPLETE
 
-        Build the main dashboard using Recharts or Chart.js.
+        ✅ Build the main dashboard using Recharts or Chart.js.
 
-        Implement timeframe toggle buttons that trigger data re-fetching.
+        ✅ Implement timeframe toggle buttons that trigger data re-fetching.
+
+        ✅ Portfolio summary with total value, 24h change, and sync button.
+
+        ✅ Accounts list with sorting by balance.
 
         Success Criteria: Chart updates dynamically when toggling from "1d" to "1w".
 
