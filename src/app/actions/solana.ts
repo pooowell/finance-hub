@@ -1,55 +1,25 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { eq, and } from "drizzle-orm";
+import { generateIdFromEntropySize } from "lucia";
+import { revalidatePath } from "next/cache";
+import { validateRequest } from "@/lib/auth";
+import { db, accounts, snapshots } from "@/lib/db";
+import type { Account } from "@/lib/db/schema";
 import {
   getWalletData,
   isValidSolanaAddress,
   transformWalletToAccount,
   createWalletSnapshot,
 } from "@/lib/solana";
-import { revalidatePath } from "next/cache";
-import type { Database } from "@/types/database";
-import type { User } from "@supabase/supabase-js";
-
-type Account = Database["public"]["Tables"]["accounts"]["Row"];
-
-/**
- * Ensure user profile exists (for users created before migration)
- */
-async function ensureProfileExists(supabase: Awaited<ReturnType<typeof createClient>>, user: User) {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile) {
-    const { error } = await supabase.from("profiles").insert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name,
-      avatar_url: user.user_metadata?.avatar_url,
-    });
-    if (error) {
-      console.error("Error creating profile:", error);
-      throw new Error("Failed to create user profile");
-    }
-  }
-}
 
 /**
  * Connect a Solana wallet by address
  */
 export async function connectSolanaWallet(walletAddress: string) {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  // Get current user
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
@@ -59,17 +29,18 @@ export async function connectSolanaWallet(walletAddress: string) {
   }
 
   try {
-    // Ensure profile exists
-    await ensureProfileExists(supabase, user);
-
     // Check if wallet already connected
-    const { data: existingAccount } = await supabase
-      .from("accounts")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("external_id", walletAddress)
-      .eq("provider", "Solana")
-      .single();
+    const existingAccount = db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(
+        and(
+          eq(accounts.userId, user.id),
+          eq(accounts.externalId, walletAddress),
+          eq(accounts.provider, "Solana")
+        )
+      )
+      .get();
 
     if (existingAccount) {
       return { error: "Wallet already connected" };
@@ -82,22 +53,31 @@ export async function connectSolanaWallet(walletAddress: string) {
     const account = transformWalletToAccount(walletData, user.id);
 
     // Insert account
-    const { data: newAccount, error: insertError } = await supabase
-      .from("accounts")
-      .insert(account)
-      .select("id")
-      .single();
-
-    if (insertError) {
-      console.error("Error inserting Solana account:", insertError);
-      return { error: "Failed to connect wallet" };
-    }
+    const accountId = generateIdFromEntropySize(10);
+    db.insert(accounts)
+      .values({
+        id: accountId,
+        userId: user.id,
+        provider: account.provider,
+        name: account.name,
+        type: account.type,
+        balanceUsd: account.balance_usd,
+        externalId: account.external_id,
+        metadata: JSON.stringify(account.metadata),
+        lastSyncedAt: account.last_synced_at,
+      })
+      .run();
 
     // Create initial snapshot
-    if (newAccount) {
-      const snapshot = createWalletSnapshot(newAccount.id, walletData.totalValueUsd);
-      await supabase.from("snapshots").insert(snapshot);
-    }
+    const snapshot = createWalletSnapshot(accountId, walletData.totalValueUsd);
+    db.insert(snapshots)
+      .values({
+        id: generateIdFromEntropySize(10),
+        accountId: snapshot.account_id,
+        timestamp: snapshot.timestamp,
+        valueUsd: snapshot.value_usd,
+      })
+      .run();
 
     revalidatePath("/dashboard");
     return {
@@ -115,49 +95,47 @@ export async function connectSolanaWallet(walletAddress: string) {
  * Sync all Solana wallets for the current user
  */
 export async function syncSolanaWallets() {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  // Get current user
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
   try {
     // Get all Solana accounts for user
-    const { data: accounts, error: fetchError } = await supabase
-      .from("accounts")
-      .select("id, external_id, balance_usd")
-      .eq("user_id", user.id)
-      .eq("provider", "Solana");
+    const solanaAccounts = db
+      .select({
+        id: accounts.id,
+        externalId: accounts.externalId,
+        balanceUsd: accounts.balanceUsd,
+      })
+      .from(accounts)
+      .where(
+        and(
+          eq(accounts.userId, user.id),
+          eq(accounts.provider, "Solana")
+        )
+      )
+      .all();
 
-    if (fetchError) {
-      return { error: "Failed to fetch accounts" };
-    }
-
-    if (!accounts || accounts.length === 0) {
+    if (solanaAccounts.length === 0) {
       return { success: true, synced: 0 };
     }
 
     let syncedCount = 0;
 
-    for (const account of accounts) {
-      if (!account.external_id) continue;
+    for (const account of solanaAccounts) {
+      if (!account.externalId) continue;
 
       try {
         // Fetch fresh wallet data
-        const walletData = await getWalletData(account.external_id);
+        const walletData = await getWalletData(account.externalId);
 
         // Update account
-        const { error: updateError } = await supabase
-          .from("accounts")
-          .update({
-            balance_usd: walletData.totalValueUsd,
-            metadata: {
+        db.update(accounts)
+          .set({
+            balanceUsd: walletData.totalValueUsd,
+            metadata: JSON.stringify({
               sol_balance: walletData.solBalanceUi,
               sol_price_usd: walletData.solPriceUsd,
               sol_value_usd: walletData.solValueUsd,
@@ -168,25 +146,29 @@ export async function syncSolanaWallets() {
                 balance: t.uiBalance,
                 value_usd: t.valueUsd,
               })),
-            },
-            last_synced_at: new Date().toISOString(),
+            }),
+            lastSyncedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           })
-          .eq("id", account.id);
-
-        if (updateError) {
-          console.error("Error updating Solana account:", updateError);
-          continue;
-        }
+          .where(eq(accounts.id, account.id))
+          .run();
 
         // Create snapshot if balance changed
-        if (account.balance_usd !== walletData.totalValueUsd) {
+        if (account.balanceUsd !== walletData.totalValueUsd) {
           const snapshot = createWalletSnapshot(account.id, walletData.totalValueUsd);
-          await supabase.from("snapshots").insert(snapshot);
+          db.insert(snapshots)
+            .values({
+              id: generateIdFromEntropySize(10),
+              accountId: snapshot.account_id,
+              timestamp: snapshot.timestamp,
+              valueUsd: snapshot.value_usd,
+            })
+            .run();
         }
 
         syncedCount++;
       } catch (error) {
-        console.error(`Error syncing wallet ${account.external_id}:`, error);
+        console.error(`Error syncing wallet ${account.externalId}:`, error);
       }
     }
 
@@ -202,26 +184,25 @@ export async function syncSolanaWallets() {
  * Remove a Solana wallet
  */
 export async function removeSolanaWallet(accountId: string) {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
   // Verify ownership and delete
-  const { error: deleteError } = await supabase
-    .from("accounts")
-    .delete()
-    .eq("id", accountId)
-    .eq("user_id", user.id)
-    .eq("provider", "Solana");
+  const result = db
+    .delete(accounts)
+    .where(
+      and(
+        eq(accounts.id, accountId),
+        eq(accounts.userId, user.id),
+        eq(accounts.provider, "Solana")
+      )
+    )
+    .run();
 
-  if (deleteError) {
+  if (result.changes === 0) {
     return { error: "Failed to remove wallet" };
   }
 
@@ -236,27 +217,23 @@ export async function getSolanaWallets(): Promise<{
   error?: string;
   accounts: Account[];
 }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized", accounts: [] };
   }
 
-  const { data: accounts, error } = await supabase
-    .from("accounts")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("provider", "Solana")
-    .order("name");
+  const solanaAccounts = db
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, user.id),
+        eq(accounts.provider, "Solana")
+      )
+    )
+    .orderBy(accounts.name)
+    .all();
 
-  if (error) {
-    return { error: "Failed to fetch wallets", accounts: [] };
-  }
-
-  return { accounts: accounts ?? [] };
+  return { accounts: solanaAccounts };
 }

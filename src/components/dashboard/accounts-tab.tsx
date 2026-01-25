@@ -4,9 +4,7 @@ import { useTransition } from "react";
 import { Wallet, Building2, Eye, EyeOff, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateAccount } from "@/app/actions/accounts";
-import type { Database, AccountCategory } from "@/types/database";
-
-type Account = Database["public"]["Tables"]["accounts"]["Row"];
+import type { Account, AccountCategory } from "@/types/database";
 
 interface AccountsTabProps {
   accounts: Account[];
@@ -66,7 +64,7 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
 
   const handleToggleHidden = () => {
     startTransition(async () => {
-      await updateAccount(account.id, { is_hidden: !account.is_hidden });
+      await updateAccount(account.id, { is_hidden: !account.isHidden });
       onUpdate();
     });
   };
@@ -74,7 +72,7 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
   const handleToggleNetWorth = () => {
     startTransition(async () => {
       await updateAccount(account.id, {
-        include_in_net_worth: !account.include_in_net_worth,
+        include_in_net_worth: !account.includeInNetWorth,
       });
       onUpdate();
     });
@@ -94,7 +92,7 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
     <div
       className={cn(
         "flex items-center justify-between p-4 hover:bg-muted/50 transition-colors",
-        account.is_hidden && "opacity-60"
+        account.isHidden && "opacity-60"
       )}
     >
       <div className="flex items-center gap-3">
@@ -128,12 +126,12 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
           disabled={isPending}
           className={cn(
             "p-2 rounded-lg transition-colors",
-            account.include_in_net_worth
+            account.includeInNetWorth
               ? "bg-green-500/10 text-green-500"
               : "bg-muted text-muted-foreground"
           )}
           title={
-            account.include_in_net_worth
+            account.includeInNetWorth
               ? "Included in net worth"
               : "Excluded from net worth"
           }
@@ -147,13 +145,13 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
           disabled={isPending}
           className={cn(
             "p-2 rounded-lg transition-colors",
-            account.is_hidden
+            account.isHidden
               ? "bg-muted text-muted-foreground"
               : "bg-primary/10 text-primary"
           )}
-          title={account.is_hidden ? "Show account" : "Hide account"}
+          title={account.isHidden ? "Show account" : "Hide account"}
         >
-          {account.is_hidden ? (
+          {account.isHidden ? (
             <EyeOff className="h-4 w-4" />
           ) : (
             <Eye className="h-4 w-4" />
@@ -162,7 +160,7 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
 
         {/* Balance */}
         <div className="text-right min-w-[100px]">
-          <p className="font-semibold">{formatCurrency(account.balance_usd)}</p>
+          <p className="font-semibold">{formatCurrency(account.balanceUsd)}</p>
         </div>
       </div>
     </div>
@@ -178,7 +176,7 @@ export function AccountsTab({
   // Filter accounts based on showHidden
   const visibleAccounts = showHidden
     ? accounts
-    : accounts.filter((a) => !a.is_hidden);
+    : accounts.filter((a) => !a.isHidden);
 
   // Group accounts by category
   const groupedAccounts = CATEGORIES.map((cat) => ({
@@ -188,7 +186,7 @@ export function AccountsTab({
     ),
   })).filter((group) => group.accounts.length > 0);
 
-  const hiddenCount = accounts.filter((a) => a.is_hidden).length;
+  const hiddenCount = accounts.filter((a) => a.isHidden).length;
 
   if (accounts.length === 0) {
     return (

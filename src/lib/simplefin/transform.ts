@@ -4,11 +4,35 @@
 
 import type { SimpleFINAccount, SimpleFINTransaction } from "@/types/simplefin";
 import { inferAccountType } from "@/types/simplefin";
-import type { Database } from "@/types/database";
 
-type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
-type SnapshotInsert = Database["public"]["Tables"]["snapshots"]["Insert"];
-type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
+// Types matching what server actions expect (snake_case)
+export interface AccountInsert {
+  user_id: string;
+  provider: string;
+  name: string;
+  type: string;
+  balance_usd: number | null;
+  external_id: string | null;
+  metadata: Record<string, unknown>;
+  last_synced_at: string | null;
+}
+
+export interface SnapshotInsert {
+  account_id: string;
+  value_usd: number;
+  timestamp: string;
+}
+
+export interface TransactionInsert {
+  account_id: string;
+  external_id: string;
+  posted_at: string;
+  amount: number;
+  description: string;
+  payee: string | null;
+  memo: string | null;
+  pending: boolean;
+}
 
 /**
  * Transforms a SimpleFIN account to our database account format

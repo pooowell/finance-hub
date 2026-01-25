@@ -1,10 +1,11 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import type { AccountCategory, Database } from "@/types/database";
-
-type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
+import { eq, inArray, desc } from "drizzle-orm";
+import { validateRequest } from "@/lib/auth";
+import { db, accounts, transactions } from "@/lib/db";
+import type { AccountCategory } from "@/types/database";
+import type { Transaction } from "@/lib/db/schema";
 
 export interface TransactionWithAccount extends Transaction {
   account_name: string;
@@ -20,43 +21,41 @@ export async function updateAccount(
   accountId: string,
   data: UpdateAccountData
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { success: false, error: "Unauthorized" };
   }
 
   // Verify user owns this account
-  const { data: account, error: fetchError } = await supabase
-    .from("accounts")
-    .select("id, user_id")
-    .eq("id", accountId)
-    .single();
+  const account = db
+    .select({ id: accounts.id, userId: accounts.userId })
+    .from(accounts)
+    .where(eq(accounts.id, accountId))
+    .get();
 
-  if (fetchError || !account) {
+  if (!account) {
     return { success: false, error: "Account not found" };
   }
 
-  if (account.user_id !== user.id) {
+  if (account.userId !== user.id) {
     return { success: false, error: "Unauthorized" };
   }
 
   // Update the account
-  const { error: updateError } = await supabase
-    .from("accounts")
-    .update({
-      ...data,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", accountId);
-
-  if (updateError) {
-    return { success: false, error: updateError.message };
+  try {
+    db.update(accounts)
+      .set({
+        isHidden: data.is_hidden,
+        includeInNetWorth: data.include_in_net_worth,
+        category: data.category,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(accounts.id, accountId))
+      .run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, error: message };
   }
 
   revalidatePath("/dashboard");
@@ -69,46 +68,39 @@ export async function updateAccount(
 export async function getRecentTransactions(
   limit: number = 10
 ): Promise<{ transactions: TransactionWithAccount[]; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { transactions: [], error: "Unauthorized" };
   }
 
   // Get user's account IDs
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .eq("user_id", user.id);
+  const userAccounts = db
+    .select({ id: accounts.id, name: accounts.name })
+    .from(accounts)
+    .where(eq(accounts.userId, user.id))
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return { transactions: [] };
   }
 
-  const accountIds = accounts.map((a) => a.id);
-  const accountNameMap = new Map(accounts.map((a) => [a.id, a.name]));
+  const accountIds = userAccounts.map((a) => a.id);
+  const accountNameMap = new Map(userAccounts.map((a) => [a.id, a.name]));
 
   // Fetch recent transactions
-  const { data: transactions, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .in("account_id", accountIds)
-    .order("posted_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    return { transactions: [], error: error.message };
-  }
+  const txList = db
+    .select()
+    .from(transactions)
+    .where(inArray(transactions.accountId, accountIds))
+    .orderBy(desc(transactions.postedAt))
+    .limit(limit)
+    .all();
 
   // Add account names to transactions
-  const transactionsWithAccounts: TransactionWithAccount[] = (transactions ?? []).map((tx) => ({
+  const transactionsWithAccounts: TransactionWithAccount[] = txList.map((tx) => ({
     ...tx,
-    account_name: accountNameMap.get(tx.account_id) ?? "Unknown Account",
+    account_name: accountNameMap.get(tx.accountId) ?? "Unknown Account",
   }));
 
   return { transactions: transactionsWithAccounts };
@@ -133,45 +125,38 @@ export interface TransactionsData {
  * Get all transactions with spending summaries for the current user
  */
 export async function getAllTransactions(): Promise<TransactionsData> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { transactions: [], summaries: [], error: "Unauthorized" };
   }
 
   // Get user's account IDs
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .eq("user_id", user.id);
+  const userAccounts = db
+    .select({ id: accounts.id, name: accounts.name })
+    .from(accounts)
+    .where(eq(accounts.userId, user.id))
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return { transactions: [], summaries: [] };
   }
 
-  const accountIds = accounts.map((a) => a.id);
-  const accountNameMap = new Map(accounts.map((a) => [a.id, a.name]));
+  const accountIds = userAccounts.map((a) => a.id);
+  const accountNameMap = new Map(userAccounts.map((a) => [a.id, a.name]));
 
   // Fetch all transactions
-  const { data: transactions, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .in("account_id", accountIds)
-    .order("posted_at", { ascending: false });
-
-  if (error) {
-    return { transactions: [], summaries: [], error: error.message };
-  }
+  const txList = db
+    .select()
+    .from(transactions)
+    .where(inArray(transactions.accountId, accountIds))
+    .orderBy(desc(transactions.postedAt))
+    .all();
 
   // Add account names to transactions
-  const transactionsWithAccounts: TransactionWithAccount[] = (transactions ?? []).map((tx) => ({
+  const transactionsWithAccounts: TransactionWithAccount[] = txList.map((tx) => ({
     ...tx,
-    account_name: accountNameMap.get(tx.account_id) ?? "Unknown Account",
+    account_name: accountNameMap.get(tx.accountId) ?? "Unknown Account",
   }));
 
   // Calculate spending summaries
@@ -186,7 +171,7 @@ export async function getAllTransactions(): Promise<TransactionsData> {
   const summaries: SpendingSummary[] = periods.map(({ period, label, days }) => {
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const periodTransactions = transactionsWithAccounts.filter(
-      (tx) => new Date(tx.posted_at) >= cutoff
+      (tx) => new Date(tx.postedAt) >= cutoff
     );
 
     let spending = 0;

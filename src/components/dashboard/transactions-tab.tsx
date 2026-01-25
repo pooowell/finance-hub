@@ -25,9 +25,7 @@ import {
   type SpendingSummary,
   type TopSpender,
 } from "@/app/actions/transactions";
-import type { Database } from "@/types/database";
-
-type TransactionLabel = Database["public"]["Tables"]["transaction_labels"]["Row"];
+import type { TransactionLabel } from "@/types/database";
 
 type TimePeriod = "1d" | "1w" | "1m" | "1y";
 type ViewMode = "overview" | "spending" | "income";
@@ -230,7 +228,7 @@ function TransactionRow({ transaction, labels, onLabel }: TransactionRowProps) {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {transaction.account_name} • {formatDate(transaction.posted_at)}
+            {transaction.account_name} • {formatDate(transaction.postedAt)}
           </p>
         </div>
       </div>

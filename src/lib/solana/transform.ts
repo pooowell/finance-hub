@@ -3,10 +3,24 @@
  */
 
 import type { SolanaWalletData } from "@/types/solana";
-import type { Database } from "@/types/database";
 
-type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
-type SnapshotInsert = Database["public"]["Tables"]["snapshots"]["Insert"];
+// Types matching what server actions expect (snake_case)
+export interface AccountInsert {
+  user_id: string;
+  provider: string;
+  name: string;
+  type: string;
+  balance_usd: number | null;
+  external_id: string | null;
+  metadata: Record<string, unknown>;
+  last_synced_at: string | null;
+}
+
+export interface SnapshotInsert {
+  account_id: string;
+  value_usd: number;
+  timestamp: string;
+}
 
 /**
  * Transforms Solana wallet data to our database account format

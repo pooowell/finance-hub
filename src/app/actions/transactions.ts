@@ -1,12 +1,11 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { eq, and, inArray, isNull, gte, desc } from "drizzle-orm";
+import { generateIdFromEntropySize } from "lucia";
 import { revalidatePath } from "next/cache";
-import type { Database } from "@/types/database";
-
-type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
-type TransactionLabel = Database["public"]["Tables"]["transaction_labels"]["Row"];
-type LabelRule = Database["public"]["Tables"]["label_rules"]["Row"];
+import { validateRequest } from "@/lib/auth";
+import { db, accounts, transactions, transactionLabels, labelRules } from "@/lib/db";
+import type { Transaction, TransactionLabel, LabelRule } from "@/lib/db/schema";
 
 export interface TransactionWithLabel extends Transaction {
   account_name: string;
@@ -57,41 +56,42 @@ const LABEL_COLORS = [
  * Get spending summaries for all periods (call once on mount)
  */
 export async function getSpendingSummaries(): Promise<{ summaries: SpendingSummary[]; labels: TransactionLabel[]; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { summaries: [], labels: [], error: "Unauthorized" };
   }
 
   // Get user's account IDs
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id")
-    .eq("user_id", user.id);
+  const userAccounts = db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(eq(accounts.userId, user.id))
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return { summaries: [], labels: [] };
   }
 
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = userAccounts.map((a) => a.id);
 
   // Get labels
-  const { data: labels } = await supabase
-    .from("transaction_labels")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("name");
+  const labels = db
+    .select()
+    .from(transactionLabels)
+    .where(eq(transactionLabels.userId, user.id))
+    .orderBy(transactionLabels.name)
+    .all();
 
   // Get all transactions for summaries (only fetch what we need)
-  const { data: allTransactions } = await supabase
-    .from("transactions")
-    .select("posted_at, amount")
-    .in("account_id", accountIds);
+  const allTransactions = db
+    .select({
+      postedAt: transactions.postedAt,
+      amount: transactions.amount,
+    })
+    .from(transactions)
+    .where(inArray(transactions.accountId, accountIds))
+    .all();
 
   const now = new Date();
   const periods = [
@@ -103,8 +103,8 @@ export async function getSpendingSummaries(): Promise<{ summaries: SpendingSumma
 
   const summaries: SpendingSummary[] = periods.map(({ period, label, days }) => {
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-    const periodTransactions = (allTransactions ?? []).filter(
-      (tx) => new Date(tx.posted_at) >= cutoff
+    const periodTransactions = allTransactions.filter(
+      (tx) => new Date(tx.postedAt) >= cutoff
     );
 
     let spending = 0;
@@ -128,7 +128,7 @@ export async function getSpendingSummaries(): Promise<{ summaries: SpendingSumma
     };
   });
 
-  return { summaries, labels: labels ?? [] };
+  return { summaries, labels };
 }
 
 /**
@@ -137,58 +137,56 @@ export async function getSpendingSummaries(): Promise<{ summaries: SpendingSumma
 export async function getTransactionsForPeriod(
   periodDays: number
 ): Promise<{ transactions: TransactionWithLabel[]; topSpending: TopSpender[]; topIncome: TopSpender[]; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { transactions: [], topSpending: [], topIncome: [], error: "Unauthorized" };
   }
 
   // Get user's accounts
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .eq("user_id", user.id);
+  const userAccounts = db
+    .select({ id: accounts.id, name: accounts.name })
+    .from(accounts)
+    .where(eq(accounts.userId, user.id))
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return { transactions: [], topSpending: [], topIncome: [] };
   }
 
-  const accountIds = accounts.map((a) => a.id);
-  const accountNameMap = new Map(accounts.map((a) => [a.id, a.name]));
+  const accountIds = userAccounts.map((a) => a.id);
+  const accountNameMap = new Map(userAccounts.map((a) => [a.id, a.name]));
 
   // Get labels for mapping
-  const { data: labels } = await supabase
-    .from("transaction_labels")
-    .select("*")
-    .eq("user_id", user.id);
+  const labels = db
+    .select()
+    .from(transactionLabels)
+    .where(eq(transactionLabels.userId, user.id))
+    .all();
 
-  const labelMap = new Map((labels ?? []).map((l) => [l.id, l]));
+  const labelMap = new Map(labels.map((l) => [l.id, l]));
 
   // Get transactions for period
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - periodDays);
 
-  const { data: transactions, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .in("account_id", accountIds)
-    .gte("posted_at", cutoff.toISOString())
-    .order("posted_at", { ascending: false });
-
-  if (error) {
-    return { transactions: [], topSpending: [], topIncome: [], error: error.message };
-  }
+  const txList = db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.accountId, accountIds),
+        gte(transactions.postedAt, cutoff.toISOString())
+      )
+    )
+    .orderBy(desc(transactions.postedAt))
+    .all();
 
   // Add account names and labels
-  const transactionsWithLabels: TransactionWithLabel[] = (transactions ?? []).map((tx) => ({
+  const transactionsWithLabels: TransactionWithLabel[] = txList.map((tx) => ({
     ...tx,
-    account_name: accountNameMap.get(tx.account_id) ?? "Unknown Account",
-    label: tx.label_id ? labelMap.get(tx.label_id) : null,
+    account_name: accountNameMap.get(tx.accountId) ?? "Unknown Account",
+    label: tx.labelId ? labelMap.get(tx.labelId) : null,
   }));
 
   // Calculate top spenders and income
@@ -228,36 +226,33 @@ export async function getTransactionsForPeriod(
  * Get all labels with their rules
  */
 export async function getLabelsWithRules(): Promise<{ labels: LabelWithRules[]; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { labels: [], error: "Unauthorized" };
   }
 
-  const { data: labels } = await supabase
-    .from("transaction_labels")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("name");
+  const labels = db
+    .select()
+    .from(transactionLabels)
+    .where(eq(transactionLabels.userId, user.id))
+    .orderBy(transactionLabels.name)
+    .all();
 
-  const { data: rules } = await supabase
-    .from("label_rules")
-    .select("*")
-    .eq("user_id", user.id);
+  const rules = db
+    .select()
+    .from(labelRules)
+    .where(eq(labelRules.userId, user.id))
+    .all();
 
   const rulesByLabel = new Map<string, LabelRule[]>();
-  for (const rule of rules ?? []) {
-    const existing = rulesByLabel.get(rule.label_id) || [];
+  for (const rule of rules) {
+    const existing = rulesByLabel.get(rule.labelId) || [];
     existing.push(rule);
-    rulesByLabel.set(rule.label_id, existing);
+    rulesByLabel.set(rule.labelId, existing);
   }
 
-  const labelsWithRules: LabelWithRules[] = (labels ?? []).map((label) => ({
+  const labelsWithRules: LabelWithRules[] = labels.map((label) => ({
     ...label,
     rules: rulesByLabel.get(label.id) || [],
   }));
@@ -272,61 +267,62 @@ export async function createLabel(
   name: string,
   color?: string
 ): Promise<{ label?: TransactionLabel; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
   // Get a random color if not provided
   const labelColor = color || LABEL_COLORS[Math.floor(Math.random() * LABEL_COLORS.length)];
 
-  const { data: label, error } = await supabase
-    .from("transaction_labels")
-    .insert({
-      user_id: user.id,
-      name,
-      color: labelColor,
-    })
-    .select()
-    .single();
+  try {
+    const labelId = generateIdFromEntropySize(10);
+    db.insert(transactionLabels)
+      .values({
+        id: labelId,
+        userId: user.id,
+        name,
+        color: labelColor,
+      })
+      .run();
 
-  if (error) {
-    return { error: error.message };
+    const label = db
+      .select()
+      .from(transactionLabels)
+      .where(eq(transactionLabels.id, labelId))
+      .get();
+
+    revalidatePath("/dashboard");
+    return { label: label ?? undefined };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { error: message };
   }
-
-  revalidatePath("/dashboard");
-  return { label };
 }
 
 /**
  * Delete a label
  */
 export async function deleteLabel(labelId: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { success: false, error: "Unauthorized" };
   }
 
-  const { error } = await supabase
-    .from("transaction_labels")
-    .delete()
-    .eq("id", labelId)
-    .eq("user_id", user.id);
+  const result = db
+    .delete(transactionLabels)
+    .where(
+      and(
+        eq(transactionLabels.id, labelId),
+        eq(transactionLabels.userId, user.id)
+      )
+    )
+    .run();
 
-  if (error) {
-    return { success: false, error: error.message };
+  if (result.changes === 0) {
+    return { success: false, error: "Label not found" };
   }
 
   revalidatePath("/dashboard");
@@ -341,48 +337,58 @@ export async function labelTransaction(
   labelId: string | null,
   createRule?: boolean
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { success: false, error: "Unauthorized" };
   }
 
   // Get the transaction to verify ownership and get details for rule
-  const { data: transaction } = await supabase
-    .from("transactions")
-    .select("*, accounts!inner(user_id)")
-    .eq("id", transactionId)
-    .single();
+  const transaction = db
+    .select({
+      id: transactions.id,
+      accountId: transactions.accountId,
+      payee: transactions.payee,
+      description: transactions.description,
+    })
+    .from(transactions)
+    .where(eq(transactions.id, transactionId))
+    .get();
 
-  if (!transaction || (transaction.accounts as { user_id: string }).user_id !== user.id) {
+  if (!transaction) {
+    return { success: false, error: "Transaction not found" };
+  }
+
+  // Verify user owns the account
+  const account = db
+    .select({ userId: accounts.userId })
+    .from(accounts)
+    .where(eq(accounts.id, transaction.accountId))
+    .get();
+
+  if (!account || account.userId !== user.id) {
     return { success: false, error: "Transaction not found" };
   }
 
   // Update the transaction label
-  const { error: updateError } = await supabase
-    .from("transactions")
-    .update({ label_id: labelId })
-    .eq("id", transactionId);
-
-  if (updateError) {
-    return { success: false, error: updateError.message };
-  }
+  db.update(transactions)
+    .set({ labelId })
+    .where(eq(transactions.id, transactionId))
+    .run();
 
   // Create a matching rule if requested
   if (createRule && labelId) {
     const matchPattern = transaction.payee || transaction.description;
     if (matchPattern) {
-      await supabase.from("label_rules").insert({
-        user_id: user.id,
-        label_id: labelId,
-        match_field: transaction.payee ? "payee" : "description",
-        match_pattern: matchPattern,
-      });
+      db.insert(labelRules)
+        .values({
+          id: generateIdFromEntropySize(10),
+          userId: user.id,
+          labelId,
+          matchField: transaction.payee ? "payee" : "description",
+          matchPattern,
+        })
+        .run();
     }
   }
 
@@ -394,73 +400,75 @@ export async function labelTransaction(
  * Apply matching rules to unlabeled transactions
  */
 export async function applyLabelRules(): Promise<{ applied: number; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { applied: 0, error: "Unauthorized" };
   }
 
   // Get all rules
-  const { data: rules } = await supabase
-    .from("label_rules")
-    .select("*")
-    .eq("user_id", user.id);
+  const rules = db
+    .select()
+    .from(labelRules)
+    .where(eq(labelRules.userId, user.id))
+    .all();
 
-  if (!rules || rules.length === 0) {
+  if (rules.length === 0) {
     return { applied: 0 };
   }
 
   // Get user's account IDs
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id")
-    .eq("user_id", user.id);
+  const userAccounts = db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(eq(accounts.userId, user.id))
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return { applied: 0 };
   }
 
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = userAccounts.map((a) => a.id);
 
   // Get unlabeled transactions
-  const { data: transactions } = await supabase
-    .from("transactions")
-    .select("*")
-    .in("account_id", accountIds)
-    .is("label_id", null);
+  const unlabeledTx = db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.accountId, accountIds),
+        isNull(transactions.labelId)
+      )
+    )
+    .all();
 
-  if (!transactions || transactions.length === 0) {
+  if (unlabeledTx.length === 0) {
     return { applied: 0 };
   }
 
   let applied = 0;
 
   // Apply rules to each unlabeled transaction
-  for (const tx of transactions) {
+  for (const tx of unlabeledTx) {
     for (const rule of rules) {
-      const pattern = rule.match_pattern.toLowerCase();
+      const pattern = rule.matchPattern.toLowerCase();
       let matches = false;
 
-      if (rule.match_field === "payee" && tx.payee) {
+      if (rule.matchField === "payee" && tx.payee) {
         matches = tx.payee.toLowerCase().includes(pattern);
-      } else if (rule.match_field === "description") {
+      } else if (rule.matchField === "description") {
         matches = tx.description.toLowerCase().includes(pattern);
-      } else if (rule.match_field === "both") {
+      } else if (rule.matchField === "both") {
         matches =
           tx.description.toLowerCase().includes(pattern) ||
           (tx.payee?.toLowerCase().includes(pattern) ?? false);
       }
 
       if (matches) {
-        await supabase
-          .from("transactions")
-          .update({ label_id: rule.label_id })
-          .eq("id", tx.id);
+        db.update(transactions)
+          .set({ labelId: rule.labelId })
+          .where(eq(transactions.id, tx.id))
+          .run();
         applied++;
         break; // Only apply first matching rule
       }
@@ -479,55 +487,53 @@ export async function createLabelRule(
   matchPattern: string,
   matchField: "description" | "payee" | "both" = "description"
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { success: false, error: "Unauthorized" };
   }
 
-  const { error } = await supabase.from("label_rules").insert({
-    user_id: user.id,
-    label_id: labelId,
-    match_field: matchField,
-    match_pattern: matchPattern,
-  });
+  try {
+    db.insert(labelRules)
+      .values({
+        id: generateIdFromEntropySize(10),
+        userId: user.id,
+        labelId,
+        matchField,
+        matchPattern,
+      })
+      .run();
 
-  if (error) {
-    return { success: false, error: error.message };
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false, error: message };
   }
-
-  revalidatePath("/dashboard");
-  return { success: true };
 }
 
 /**
  * Delete a label rule
  */
 export async function deleteLabelRule(ruleId: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { success: false, error: "Unauthorized" };
   }
 
-  const { error } = await supabase
-    .from("label_rules")
-    .delete()
-    .eq("id", ruleId)
-    .eq("user_id", user.id);
+  const result = db
+    .delete(labelRules)
+    .where(
+      and(
+        eq(labelRules.id, ruleId),
+        eq(labelRules.userId, user.id)
+      )
+    )
+    .run();
 
-  if (error) {
-    return { success: false, error: error.message };
+  if (result.changes === 0) {
+    return { success: false, error: "Rule not found" };
   }
 
   revalidatePath("/dashboard");

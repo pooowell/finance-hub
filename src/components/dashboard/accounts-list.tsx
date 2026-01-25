@@ -2,9 +2,7 @@
 
 import { Wallet, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Database } from "@/types/database";
-
-type Account = Database["public"]["Tables"]["accounts"]["Row"];
+import type { Account } from "@/types/database";
 
 interface AccountsListProps {
   accounts: Account[];
@@ -63,7 +61,7 @@ export function AccountsList({ accounts }: AccountsListProps) {
 
   // Sort by balance descending
   const sortedAccounts = [...accounts].sort(
-    (a, b) => (b.balance_usd ?? 0) - (a.balance_usd ?? 0)
+    (a, b) => (b.balanceUsd ?? 0) - (a.balanceUsd ?? 0)
   );
 
   return (
@@ -99,10 +97,10 @@ export function AccountsList({ accounts }: AccountsListProps) {
               </div>
             </div>
             <div className="text-right">
-              <p className="font-semibold">{formatCurrency(account.balance_usd)}</p>
-              {account.last_synced_at && (
+              <p className="font-semibold">{formatCurrency(account.balanceUsd)}</p>
+              {account.lastSyncedAt && (
                 <p className="text-xs text-muted-foreground">
-                  Synced {new Date(account.last_synced_at).toLocaleDateString()}
+                  Synced {new Date(account.lastSyncedAt).toLocaleDateString()}
                 </p>
               )}
             </div>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
+import { signup, signin } from "@/lib/auth/actions";
 
 interface AuthFormProps {
   onSuccess?: () => void;
@@ -27,31 +27,18 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
     }
 
     startTransition(async () => {
-      const supabase = createClient();
+      const result = mode === "signup"
+        ? await signup(email.trim(), password.trim())
+        : await signin(email.trim(), password.trim());
 
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: password.trim(),
-        });
-
-        if (error) {
-          setError(error.message);
-        } else {
-          setSuccess("Check your email for a confirmation link!");
+      if (result.error) {
+        setError(result.error);
+      } else if (result.success) {
+        if (mode === "signup") {
+          setSuccess("Account created! Signing you in...");
         }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        });
-
-        if (error) {
-          setError(error.message);
-        } else {
-          onSuccess?.();
-          window.location.reload();
-        }
+        onSuccess?.();
+        window.location.reload();
       }
     });
   };

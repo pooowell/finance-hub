@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { validateRequest } from "@/lib/auth";
 import { DashboardContent } from "./dashboard-content";
 import { AuthForm } from "@/components/auth";
 
@@ -45,8 +45,7 @@ function DashboardSkeleton() {
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await validateRequest();
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-4xl">

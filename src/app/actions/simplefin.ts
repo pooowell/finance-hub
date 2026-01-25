@@ -1,6 +1,11 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { eq, and } from "drizzle-orm";
+import { generateIdFromEntropySize } from "lucia";
+import { revalidatePath } from "next/cache";
+import { validateRequest } from "@/lib/auth";
+import { db, accounts, credentials, snapshots, transactions } from "@/lib/db";
+import type { Account } from "@/lib/db/schema";
 import {
   claimSetupToken,
   fetchAccounts,
@@ -8,56 +13,18 @@ import {
   transformTransactions,
   createSnapshot,
 } from "@/lib/simplefin";
-import { revalidatePath } from "next/cache";
-import type { Database } from "@/types/database";
-import type { User } from "@supabase/supabase-js";
-
-type Account = Database["public"]["Tables"]["accounts"]["Row"];
-
-/**
- * Ensure user profile exists (for users created before migration)
- */
-async function ensureProfileExists(supabase: Awaited<ReturnType<typeof createClient>>, user: User) {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile) {
-    const { error } = await supabase.from("profiles").insert({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name,
-      avatar_url: user.user_metadata?.avatar_url,
-    });
-    if (error) {
-      console.error("Error creating profile:", error);
-      throw new Error("Failed to create user profile");
-    }
-  }
-}
 
 /**
  * Connect a SimpleFIN account using a setup token
  */
 export async function connectSimpleFIN(setupToken: string) {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  // Get current user
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
   try {
-    // Ensure profile exists
-    await ensureProfileExists(supabase, user);
-
     // Claim the setup token to get access URL
     let accessUrl: string;
     try {
@@ -68,15 +35,36 @@ export async function connectSimpleFIN(setupToken: string) {
       return { error: `Failed to claim token: ${message}` };
     }
 
-    // Store the access URL for future syncs
-    await supabase
-      .from("credentials")
-      .upsert({
-        user_id: user.id,
-        provider: "SimpleFIN",
-        access_token: accessUrl,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,provider" });
+    // Store the access URL for future syncs (upsert)
+    const existingCred = db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.userId, user.id),
+          eq(credentials.provider, "SimpleFIN")
+        )
+      )
+      .get();
+
+    if (existingCred) {
+      db.update(credentials)
+        .set({
+          accessToken: accessUrl,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(credentials.id, existingCred.id))
+        .run();
+    } else {
+      db.insert(credentials)
+        .values({
+          id: generateIdFromEntropySize(10),
+          userId: user.id,
+          provider: "SimpleFIN",
+          accessToken: accessUrl,
+        })
+        .run();
+    }
 
     // Fetch and sync accounts immediately
     const syncResult = await syncSimpleFINAccounts(accessUrl);
@@ -95,41 +83,35 @@ export async function connectSimpleFIN(setupToken: string) {
 
 /**
  * Sync SimpleFIN accounts and create snapshots
- * In production, the accessUrl should be retrieved from secure storage
  */
 export async function syncSimpleFINAccounts(accessUrl?: string) {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  // Get current user
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized" };
   }
 
   // Retrieve accessUrl from credentials table if not provided
   if (!accessUrl) {
-    const { data: credentials } = await supabase
-      .from("credentials")
-      .select("access_token")
-      .eq("user_id", user.id)
-      .eq("provider", "SimpleFIN")
-      .single();
+    const cred = db
+      .select({ accessToken: credentials.accessToken })
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.userId, user.id),
+          eq(credentials.provider, "SimpleFIN")
+        )
+      )
+      .get();
 
-    if (!credentials?.access_token) {
+    if (!cred?.accessToken) {
       return { error: "No SimpleFIN credentials found. Please reconnect your account." };
     }
 
-    accessUrl = credentials.access_token;
+    accessUrl = cred.accessToken;
   }
 
   try {
-    // Ensure profile exists
-    await ensureProfileExists(supabase, user);
-
     // Fetch accounts from SimpleFIN (with transactions from last 90 days)
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 90);
@@ -148,87 +130,135 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     }
 
     // Transform accounts to our format
-    const accounts = transformAccounts(accountSet.accounts, user.id);
+    const transformedAccounts = transformAccounts(accountSet.accounts, user.id);
 
     // Upsert accounts (update existing or insert new)
-    for (let i = 0; i < accounts.length; i++) {
-      const account = accounts[i];
+    for (let i = 0; i < transformedAccounts.length; i++) {
+      const account = transformedAccounts[i];
       const simplefinAccount = accountSet.accounts[i];
       let accountId: string;
 
       // Check if account already exists
-      const { data: existingAccount } = await supabase
-        .from("accounts")
-        .select("id, balance_usd")
-        .eq("user_id", user.id)
-        .eq("external_id", account.external_id ?? "")
-        .single();
+      const existingAccount = db
+        .select({ id: accounts.id, balanceUsd: accounts.balanceUsd })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.userId, user.id),
+            eq(accounts.externalId, account.external_id ?? "")
+          )
+        )
+        .get();
 
       if (existingAccount) {
         accountId = existingAccount.id;
 
         // Update existing account
-        const { error: updateError } = await supabase
-          .from("accounts")
-          .update({
-            balance_usd: account.balance_usd,
+        db.update(accounts)
+          .set({
+            balanceUsd: account.balance_usd,
             name: account.name,
-            metadata: account.metadata,
-            last_synced_at: account.last_synced_at,
+            metadata: JSON.stringify(account.metadata),
+            lastSyncedAt: account.last_synced_at,
+            updatedAt: new Date().toISOString(),
           })
-          .eq("id", existingAccount.id);
-
-        if (updateError) {
-          console.error("Error updating account:", updateError);
-          continue;
-        }
+          .where(eq(accounts.id, existingAccount.id))
+          .run();
 
         // Create snapshot if balance changed
-        if (existingAccount.balance_usd !== account.balance_usd) {
-          const snapshot = createSnapshot(
-            existingAccount.id,
-            account.balance_usd ?? 0
-          );
-          await supabase.from("snapshots").insert(snapshot);
+        if (existingAccount.balanceUsd !== account.balance_usd) {
+          const snapshot = createSnapshot(existingAccount.id, account.balance_usd ?? 0);
+          db.insert(snapshots)
+            .values({
+              id: generateIdFromEntropySize(10),
+              accountId: snapshot.account_id,
+              timestamp: snapshot.timestamp,
+              valueUsd: snapshot.value_usd,
+            })
+            .run();
         }
       } else {
         // Insert new account
-        const { data: newAccount, error: insertError } = await supabase
-          .from("accounts")
-          .insert(account)
-          .select("id")
-          .single();
-
-        if (insertError) {
-          console.error("Error inserting account:", insertError);
-          continue;
-        }
-
-        accountId = newAccount.id;
+        accountId = generateIdFromEntropySize(10);
+        db.insert(accounts)
+          .values({
+            id: accountId,
+            userId: user.id,
+            provider: account.provider,
+            name: account.name,
+            type: account.type,
+            balanceUsd: account.balance_usd,
+            externalId: account.external_id,
+            metadata: JSON.stringify(account.metadata),
+            lastSyncedAt: account.last_synced_at,
+          })
+          .run();
 
         // Create initial snapshot
-        const snapshot = createSnapshot(
-          newAccount.id,
-          account.balance_usd ?? 0
-        );
-        await supabase.from("snapshots").insert(snapshot);
+        const snapshot = createSnapshot(accountId, account.balance_usd ?? 0);
+        db.insert(snapshots)
+          .values({
+            id: generateIdFromEntropySize(10),
+            accountId: snapshot.account_id,
+            timestamp: snapshot.timestamp,
+            valueUsd: snapshot.value_usd,
+          })
+          .run();
       }
 
       // Sync transactions for this account
       if (simplefinAccount.transactions && simplefinAccount.transactions.length > 0) {
-        const transactions = transformTransactions(simplefinAccount.transactions, accountId);
+        const txList = transformTransactions(simplefinAccount.transactions, accountId);
 
-        // Upsert transactions (ignore conflicts on unique constraint)
-        for (const tx of transactions) {
-          await supabase
-            .from("transactions")
-            .upsert(tx, { onConflict: "account_id,external_id" });
+        // Upsert transactions
+        for (const tx of txList) {
+          // Check if transaction exists
+          const existingTx = db
+            .select({ id: transactions.id })
+            .from(transactions)
+            .where(
+              and(
+                eq(transactions.accountId, accountId),
+                eq(transactions.externalId, tx.external_id)
+              )
+            )
+            .get();
+
+          if (existingTx) {
+            // Update existing transaction
+            db.update(transactions)
+              .set({
+                postedAt: tx.posted_at,
+                amount: tx.amount,
+                description: tx.description,
+                payee: tx.payee,
+                memo: tx.memo,
+                pending: tx.pending,
+              })
+              .where(eq(transactions.id, existingTx.id))
+              .run();
+          } else {
+            // Insert new transaction
+            db.insert(transactions)
+              .values({
+                id: generateIdFromEntropySize(10),
+                accountId: tx.account_id,
+                externalId: tx.external_id,
+                postedAt: tx.posted_at,
+                amount: tx.amount,
+                description: tx.description,
+                payee: tx.payee,
+                memo: tx.memo,
+                pending: tx.pending,
+              })
+              .run();
+          }
         }
       }
     }
 
     revalidatePath("/dashboard");
-    return { success: true, accountCount: accounts.length };
+    return { success: true, accountCount: transformedAccounts.length };
   } catch (error) {
     console.error("SimpleFIN sync error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -243,27 +273,23 @@ export async function getSimpleFINAccounts(): Promise<{
   error?: string;
   accounts: Account[];
 }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { error: "Unauthorized", accounts: [] };
   }
 
-  const { data: accounts, error } = await supabase
-    .from("accounts")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("provider", "SimpleFIN")
-    .order("name");
+  const userAccounts = db
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, user.id),
+        eq(accounts.provider, "SimpleFIN")
+      )
+    )
+    .orderBy(accounts.name)
+    .all();
 
-  if (error) {
-    return { error: "Failed to fetch accounts", accounts: [] };
-  }
-
-  return { accounts: accounts ?? [] };
+  return { accounts: userAccounts };
 }

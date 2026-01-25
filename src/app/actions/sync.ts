@@ -1,9 +1,12 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { eq, inArray, and, gte, lte, asc } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { validateRequest } from "@/lib/auth";
+import { db, accounts, snapshots } from "@/lib/db";
 import { syncSimpleFINAccounts } from "./simplefin";
 import { syncSolanaWallets } from "./solana";
-import { revalidatePath } from "next/cache";
+
 interface SyncResult {
   simplefin: { success: boolean; synced?: number; error?: string };
   solana: { success: boolean; synced?: number; error?: string };
@@ -15,14 +18,9 @@ interface SyncResult {
  * Calls both SimpleFIN and Solana sync functions
  */
 export async function syncAllAccounts(): Promise<SyncResult> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return {
       simplefin: { success: false, error: "Unauthorized" },
       solana: { success: false, error: "Unauthorized" },
@@ -32,7 +30,6 @@ export async function syncAllAccounts(): Promise<SyncResult> {
 
   // Sync both providers in parallel
   const [simplefinResult, solanaResult] = await Promise.all([
-    // SimpleFIN sync - Note: In production, retrieve stored access URL
     syncSimpleFINAccounts().catch((e) => ({
       error: e.message || "SimpleFIN sync failed",
     })),
@@ -70,42 +67,45 @@ export async function getTotalPortfolioValue(): Promise<{
   accountCount: number;
   lastSynced: string | null;
 }> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return { totalValueUsd: 0, accountCount: 0, lastSynced: null };
   }
 
-  const { data: accounts, error } = await supabase
-    .from("accounts")
-    .select("balance_usd, last_synced_at, include_in_net_worth")
-    .eq("user_id", user.id)
-    .eq("include_in_net_worth", true);
+  const userAccounts = db
+    .select({
+      balanceUsd: accounts.balanceUsd,
+      lastSyncedAt: accounts.lastSyncedAt,
+    })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, user.id),
+        eq(accounts.includeInNetWorth, true)
+      )
+    )
+    .all();
 
-  if (error || !accounts) {
+  if (userAccounts.length === 0) {
     return { totalValueUsd: 0, accountCount: 0, lastSynced: null };
   }
 
-  const totalValueUsd = accounts.reduce(
-    (sum, acc) => sum + (acc.balance_usd || 0),
+  const totalValueUsd = userAccounts.reduce(
+    (sum, acc) => sum + (acc.balanceUsd || 0),
     0
   );
 
   // Get most recent sync time
-  const lastSynced = accounts.reduce((latest, acc) => {
-    if (!acc.last_synced_at) return latest;
-    if (!latest) return acc.last_synced_at;
-    return acc.last_synced_at > latest ? acc.last_synced_at : latest;
+  const lastSynced = userAccounts.reduce((latest, acc) => {
+    if (!acc.lastSyncedAt) return latest;
+    if (!latest) return acc.lastSyncedAt;
+    return acc.lastSyncedAt > latest ? acc.lastSyncedAt : latest;
   }, null as string | null);
 
   return {
     totalValueUsd,
-    accountCount: accounts.length,
+    accountCount: userAccounts.length,
     lastSynced,
   };
 }
@@ -118,47 +118,52 @@ export async function getPortfolioHistory(options?: {
   endDate?: Date;
   interval?: "1h" | "1d" | "1w" | "1m";
 }): Promise<{ timestamp: string; value: number }[]> {
-  const supabase = await createClient();
+  const { user } = await validateRequest();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
+  if (!user) {
     return [];
   }
 
   // Get user's account IDs (only those included in net worth)
-  const { data: accounts } = await supabase
-    .from("accounts")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("include_in_net_worth", true);
+  const userAccounts = db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, user.id),
+        eq(accounts.includeInNetWorth, true)
+      )
+    )
+    .all();
 
-  if (!accounts || accounts.length === 0) {
+  if (userAccounts.length === 0) {
     return [];
   }
 
-  const accountIds = accounts.map((a) => a.id);
+  const accountIds = userAccounts.map((a) => a.id);
 
-  // Build query for snapshots
-  let query = supabase
-    .from("snapshots")
-    .select("timestamp, value_usd, account_id")
-    .in("account_id", accountIds)
-    .order("timestamp", { ascending: true });
+  // Build conditions
+  const conditions = [inArray(snapshots.accountId, accountIds)];
 
   if (options?.startDate) {
-    query = query.gte("timestamp", options.startDate.toISOString());
+    conditions.push(gte(snapshots.timestamp, options.startDate.toISOString()));
   }
   if (options?.endDate) {
-    query = query.lte("timestamp", options.endDate.toISOString());
+    conditions.push(lte(snapshots.timestamp, options.endDate.toISOString()));
   }
 
-  const { data: snapshots, error } = await query;
+  const snapshotList = db
+    .select({
+      timestamp: snapshots.timestamp,
+      valueUsd: snapshots.valueUsd,
+      accountId: snapshots.accountId,
+    })
+    .from(snapshots)
+    .where(and(...conditions))
+    .orderBy(asc(snapshots.timestamp))
+    .all();
 
-  if (error || !snapshots) {
+  if (snapshotList.length === 0) {
     return [];
   }
 
@@ -173,12 +178,12 @@ export async function getPortfolioHistory(options?: {
 
   const buckets = new Map<number, { total: number; count: number }>();
 
-  for (const snapshot of snapshots) {
+  for (const snapshot of snapshotList) {
     const ts = new Date(snapshot.timestamp).getTime();
     const bucketKey = Math.floor(ts / bucketMs) * bucketMs;
 
     const existing = buckets.get(bucketKey) || { total: 0, count: 0 };
-    existing.total += snapshot.value_usd;
+    existing.total += snapshot.valueUsd;
     existing.count += 1;
     buckets.set(bucketKey, existing);
   }
@@ -195,38 +200,15 @@ export async function getPortfolioHistory(options?: {
 }
 
 /**
- * Trigger sync via Edge Function (for cron jobs or external triggers)
+ * Trigger sync via Edge Function - removed for SQLite migration
+ * Edge functions are no longer used with local SQLite
  */
 export async function triggerEdgeFunctionSync(): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { success: false, error: "Unauthorized" };
-  }
-
-  try {
-    const { error } = await supabase.functions.invoke("sync-accounts", {
-      body: { userId: user.id },
-    });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
+  return {
+    success: false,
+    error: "Edge function sync is not available with local SQLite database. Use syncAllAccounts() instead."
+  };
 }

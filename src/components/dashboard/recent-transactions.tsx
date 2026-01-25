@@ -118,7 +118,7 @@ export function RecentTransactions() {
                     {tx.payee || tx.description}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {tx.account_name} • {formatDate(tx.posted_at)}
+                    {tx.account_name} • {formatDate(tx.postedAt)}
                   </p>
                 </div>
               </div>

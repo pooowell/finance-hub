@@ -14,10 +14,8 @@ import {
 import { syncAllAccounts, getTotalPortfolioValue, getPortfolioHistory } from "@/app/actions/sync";
 import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
-import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/types/database";
-
-type Account = Database["public"]["Tables"]["accounts"]["Row"];
+import { signout } from "@/lib/auth/actions";
+import type { Account } from "@/lib/db/schema";
 
 interface PortfolioData {
   totalValueUsd: number;
@@ -89,9 +87,7 @@ export function DashboardContent() {
 
   // Handle sign out
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.reload();
+    await signout();
   };
 
   // Handle sync
