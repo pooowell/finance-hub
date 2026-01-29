@@ -5,7 +5,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("react", () => ({
-  cache: (fn: Function) => fn,
+  cache: (fn: (...args: unknown[]) => unknown) => fn,
 }));
 
 vi.mock("./lucia", () => ({
@@ -21,6 +21,10 @@ import { validateRequest } from "./index";
 import { lucia } from "./lucia";
 import { cookies } from "next/headers";
 
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+type ValidateSessionResult = Awaited<ReturnType<typeof lucia.validateSession>>;
+type LuciaCookie = ReturnType<typeof lucia.createSessionCookie>;
+
 describe("validateRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -28,7 +32,7 @@ describe("validateRequest", () => {
 
   it("should return null user and session when no cookie exists", async () => {
     const mockCookieStore = { get: vi.fn().mockReturnValue(undefined), set: vi.fn() };
-    vi.mocked(cookies).mockResolvedValue(mockCookieStore as any);
+    vi.mocked(cookies).mockResolvedValue(mockCookieStore as unknown as CookieStore);
 
     const result = await validateRequest();
 
@@ -41,8 +45,8 @@ describe("validateRequest", () => {
     const mockUser = { id: "user-1", email: "test@example.com" };
     const mockCookieStore = { get: vi.fn().mockReturnValue({ value: "session-123" }), set: vi.fn() };
 
-    vi.mocked(cookies).mockResolvedValue(mockCookieStore as any);
-    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as any);
+    vi.mocked(cookies).mockResolvedValue(mockCookieStore as unknown as CookieStore);
+    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as unknown as ValidateSessionResult);
 
     const result = await validateRequest();
 
@@ -56,9 +60,9 @@ describe("validateRequest", () => {
     const mockSessionCookie = { name: "auth_session", value: "refreshed-value", attributes: { secure: false } };
     const mockCookieStore = { get: vi.fn().mockReturnValue({ value: "session-123" }), set: vi.fn() };
 
-    vi.mocked(cookies).mockResolvedValue(mockCookieStore as any);
-    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as any);
-    vi.mocked(lucia.createSessionCookie).mockReturnValue(mockSessionCookie as any);
+    vi.mocked(cookies).mockResolvedValue(mockCookieStore as unknown as CookieStore);
+    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as unknown as ValidateSessionResult);
+    vi.mocked(lucia.createSessionCookie).mockReturnValue(mockSessionCookie as unknown as LuciaCookie);
 
     await validateRequest();
 
@@ -70,9 +74,9 @@ describe("validateRequest", () => {
     const mockBlankCookie = { name: "auth_session", value: "", attributes: { secure: false } };
     const mockCookieStore = { get: vi.fn().mockReturnValue({ value: "expired-session" }), set: vi.fn() };
 
-    vi.mocked(cookies).mockResolvedValue(mockCookieStore as any);
+    vi.mocked(cookies).mockResolvedValue(mockCookieStore as unknown as CookieStore);
     vi.mocked(lucia.validateSession).mockResolvedValue({ session: null, user: null });
-    vi.mocked(lucia.createBlankSessionCookie).mockReturnValue(mockBlankCookie as any);
+    vi.mocked(lucia.createBlankSessionCookie).mockReturnValue(mockBlankCookie as unknown as LuciaCookie);
 
     const result = await validateRequest();
 
@@ -90,9 +94,9 @@ describe("validateRequest", () => {
       set: vi.fn().mockImplementation(() => { throw new Error("Cannot set cookies in server components"); }),
     };
 
-    vi.mocked(cookies).mockResolvedValue(mockCookieStore as any);
-    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as any);
-    vi.mocked(lucia.createSessionCookie).mockReturnValue(mockSessionCookie as any);
+    vi.mocked(cookies).mockResolvedValue(mockCookieStore as unknown as CookieStore);
+    vi.mocked(lucia.validateSession).mockResolvedValue({ session: mockSession, user: mockUser } as unknown as ValidateSessionResult);
+    vi.mocked(lucia.createSessionCookie).mockReturnValue(mockSessionCookie as unknown as LuciaCookie);
 
     // Should not throw — the catch block handles this
     const result = await validateRequest();
