@@ -111,10 +111,11 @@ test.describe("Authentication", () => {
   });
 
   test.describe("Authentication Flow", () => {
-    const testEmail = `test-${Date.now()}@example.com`;
     const testPassword = "testPassword123";
 
     test("should create account and sign in", async ({ page }) => {
+      const testEmail = `test-${Date.now()}@example.com`;
+
       await page.goto("/dashboard");
 
       // Switch to signup
@@ -127,45 +128,29 @@ test.describe("Authentication", () => {
       // Submit
       await page.getByRole("button", { name: /create account/i }).click();
 
-      // Wait for success or page reload
-      // After successful signup, should see dashboard content (not auth form)
-      await page.waitForTimeout(2000); // Wait for potential reload
-
-      // If signup was successful, auth form should be gone and dashboard content visible
-      // We check for either success message or dashboard content
-      const hasSuccess = await page.getByText(/account created/i).isVisible().catch(() => false);
-      const hasDashboard = await page.getByText(/total portfolio value/i).isVisible().catch(() => false);
-
-      expect(hasSuccess || hasDashboard).toBeTruthy();
+      // Wait for signup to complete — dashboard content should appear
+      await expect(page.getByText(/total portfolio value/i)).toBeVisible({ timeout: 10000 });
     });
 
     test("should maintain session after page reload", async ({ page, context }) => {
+      const testEmail = `session-test-${Date.now()}@example.com`;
+
       // First, create an account and sign in
       await page.goto("/dashboard");
       await page.getByRole("button", { name: /sign up/i }).click();
 
-      const email = `session-test-${Date.now()}@example.com`;
-      await page.getByPlaceholder(/you@example\.com/i).fill(email);
+      await page.getByPlaceholder(/you@example\.com/i).fill(testEmail);
       await page.getByPlaceholder(/enter your password/i).fill("testPassword123");
       await page.getByRole("button", { name: /create account/i }).click();
 
-      // Wait for auth to complete
-      await page.waitForTimeout(2000);
+      // Wait for auth to complete — dashboard should be visible
+      await expect(page.getByText(/total portfolio value/i)).toBeVisible({ timeout: 10000 });
 
       // Reload page
       await page.reload();
 
-      // Wait for page to load
-      await page.waitForTimeout(1000);
-
-      // Check if we're still authenticated (should see dashboard, not auth form)
-      // If authenticated, sign in form shouldn't be visible
-      const authFormVisible = await page.getByRole("heading", { name: /sign in/i }).isVisible().catch(() => false);
-      const dashboardVisible = await page.getByText(/total portfolio value/i).isVisible().catch(() => false);
-
-      // Either should be logged in (dashboard visible) or session expired (auth form visible)
-      // This test verifies the auth state is consistent after reload
-      expect(authFormVisible || dashboardVisible).toBeTruthy();
+      // After reload, authenticated user should still see the dashboard
+      await expect(page.getByText(/total portfolio value/i)).toBeVisible({ timeout: 10000 });
     });
   });
 
