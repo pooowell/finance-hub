@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { transformAccount, transformAccounts, createSnapshot } from "./transform";
-import type { SimpleFINAccount } from "@/types/simplefin";
+import {
+  transformAccount,
+  transformAccounts,
+  createSnapshot,
+  transformTransaction,
+  transformTransactions,
+} from "./transform";
+import type { SimpleFINAccount, SimpleFINTransaction } from "@/types/simplefin";
 
 describe("SimpleFIN Transform", () => {
   const mockUserId = "user-123";
@@ -145,6 +151,175 @@ describe("SimpleFIN Transform", () => {
       const resultTime = new Date(result.timestamp!).getTime();
       expect(resultTime).toBeGreaterThanOrEqual(before.getTime());
       expect(resultTime).toBeLessThanOrEqual(after.getTime());
+    });
+  });
+
+  describe("transformTransaction", () => {
+    const mockAccountId = "account-123";
+
+    const mockSimpleFINTransaction: SimpleFINTransaction = {
+      id: "txn-456",
+      posted: 1705593600, // Unix timestamp
+      amount: "-50.00",
+      description: "Coffee Shop Purchase",
+      payee: "Starbucks",
+      memo: "Morning coffee",
+      pending: false,
+    };
+
+    it("should transform a SimpleFIN transaction to database format", () => {
+      const result = transformTransaction(mockSimpleFINTransaction, mockAccountId);
+
+      expect(result.account_id).toBe(mockAccountId);
+      expect(result.external_id).toBe("txn-456");
+      expect(result.amount).toBe(-50.0);
+      expect(result.description).toBe("Coffee Shop Purchase");
+      expect(result.payee).toBe("Starbucks");
+      expect(result.memo).toBe("Morning coffee");
+      expect(result.pending).toBe(false);
+    });
+
+    it("should convert Unix timestamp to ISO string", () => {
+      const result = transformTransaction(mockSimpleFINTransaction, mockAccountId);
+
+      // 1705593600 = 2024-01-18T16:00:00.000Z
+      expect(result.posted_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      const parsedDate = new Date(result.posted_at);
+      expect(parsedDate.getTime()).toBe(1705593600000);
+    });
+
+    it("should handle positive amounts (income)", () => {
+      const incomeTransaction: SimpleFINTransaction = {
+        ...mockSimpleFINTransaction,
+        amount: "1500.00",
+        description: "Salary Deposit",
+      };
+      const result = transformTransaction(incomeTransaction, mockAccountId);
+
+      expect(result.amount).toBe(1500.0);
+    });
+
+    it("should handle missing payee", () => {
+      const transactionNoPayee: SimpleFINTransaction = {
+        id: "txn-789",
+        posted: 1705593600,
+        amount: "-25.00",
+        description: "Some purchase",
+      };
+      const result = transformTransaction(transactionNoPayee, mockAccountId);
+
+      expect(result.payee).toBeNull();
+    });
+
+    it("should handle missing memo", () => {
+      const transactionNoMemo: SimpleFINTransaction = {
+        id: "txn-789",
+        posted: 1705593600,
+        amount: "-25.00",
+        description: "Some purchase",
+        payee: "Some Store",
+      };
+      const result = transformTransaction(transactionNoMemo, mockAccountId);
+
+      expect(result.memo).toBeNull();
+    });
+
+    it("should default pending to false when not provided", () => {
+      const transactionNoPending: SimpleFINTransaction = {
+        id: "txn-789",
+        posted: 1705593600,
+        amount: "-25.00",
+        description: "Some purchase",
+      };
+      const result = transformTransaction(transactionNoPending, mockAccountId);
+
+      expect(result.pending).toBe(false);
+    });
+
+    it("should handle pending transactions", () => {
+      const pendingTransaction: SimpleFINTransaction = {
+        ...mockSimpleFINTransaction,
+        pending: true,
+      };
+      const result = transformTransaction(pendingTransaction, mockAccountId);
+
+      expect(result.pending).toBe(true);
+    });
+
+    it("should handle decimal amounts with precision", () => {
+      const preciseTransaction: SimpleFINTransaction = {
+        ...mockSimpleFINTransaction,
+        amount: "-123.45",
+      };
+      const result = transformTransaction(preciseTransaction, mockAccountId);
+
+      expect(result.amount).toBe(-123.45);
+    });
+
+    it("should handle zero amounts", () => {
+      const zeroTransaction: SimpleFINTransaction = {
+        ...mockSimpleFINTransaction,
+        amount: "0.00",
+      };
+      const result = transformTransaction(zeroTransaction, mockAccountId);
+
+      expect(result.amount).toBe(0);
+    });
+  });
+
+  describe("transformTransactions", () => {
+    const mockAccountId = "account-123";
+
+    it("should transform multiple transactions", () => {
+      const transactions: SimpleFINTransaction[] = [
+        {
+          id: "txn-1",
+          posted: 1705593600,
+          amount: "-50.00",
+          description: "Purchase 1",
+        },
+        {
+          id: "txn-2",
+          posted: 1705680000,
+          amount: "1000.00",
+          description: "Deposit",
+        },
+        {
+          id: "txn-3",
+          posted: 1705766400,
+          amount: "-75.50",
+          description: "Purchase 2",
+        },
+      ];
+
+      const result = transformTransactions(transactions, mockAccountId);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].external_id).toBe("txn-1");
+      expect(result[1].external_id).toBe("txn-2");
+      expect(result[2].external_id).toBe("txn-3");
+      expect(result[0].amount).toBe(-50.0);
+      expect(result[1].amount).toBe(1000.0);
+      expect(result[2].amount).toBe(-75.5);
+    });
+
+    it("should return empty array for empty input", () => {
+      const result = transformTransactions([], mockAccountId);
+      expect(result).toEqual([]);
+    });
+
+    it("should preserve transaction order", () => {
+      const transactions: SimpleFINTransaction[] = [
+        { id: "first", posted: 1, amount: "1", description: "First" },
+        { id: "second", posted: 2, amount: "2", description: "Second" },
+        { id: "third", posted: 3, amount: "3", description: "Third" },
+      ];
+
+      const result = transformTransactions(transactions, mockAccountId);
+
+      expect(result[0].external_id).toBe("first");
+      expect(result[1].external_id).toBe("second");
+      expect(result[2].external_id).toBe("third");
     });
   });
 });
