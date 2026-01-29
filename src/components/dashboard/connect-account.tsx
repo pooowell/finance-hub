@@ -94,18 +94,21 @@ export function ConnectAccount({ onSuccess }: ConnectAccountProps) {
             setSuccess(null);
           }}
           className="text-muted-foreground hover:text-foreground"
+          aria-label="Close"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6" role="tablist">
         <button
           onClick={() => {
             setActiveTab("solana");
             setError(null);
           }}
+          role="tab"
+          aria-selected={activeTab === "solana"}
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
             activeTab === "solana"
@@ -121,6 +124,8 @@ export function ConnectAccount({ onSuccess }: ConnectAccountProps) {
             setActiveTab("simplefin");
             setError(null);
           }}
+          role="tab"
+          aria-selected={activeTab === "simplefin"}
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg transition-colors",
             activeTab === "simplefin"
@@ -149,18 +154,20 @@ export function ConnectAccount({ onSuccess }: ConnectAccountProps) {
       {activeTab === "solana" && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label htmlFor="solana-address" className="block text-sm font-medium mb-2">
               Wallet Address
             </label>
             <input
+              id="solana-address"
               type="text"
               value={solanaAddress}
               onChange={(e) => setSolanaAddress(e.target.value)}
               placeholder="Enter Solana wallet address..."
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isPending}
+              aria-describedby="solana-address-help"
             />
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p id="solana-address-help" className="mt-2 text-xs text-muted-foreground">
               Enter any Solana wallet address to track its SOL and token balances.
             </p>
           </div>
@@ -178,18 +185,20 @@ export function ConnectAccount({ onSuccess }: ConnectAccountProps) {
       {activeTab === "simplefin" && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label htmlFor="simplefin-token" className="block text-sm font-medium mb-2">
               Setup Token
             </label>
             <input
+              id="simplefin-token"
               type="text"
               value={simplefinToken}
               onChange={(e) => setSimplefinToken(e.target.value)}
               placeholder="Paste your SimpleFIN setup token..."
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isPending}
+              aria-describedby="simplefin-token-help"
             />
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p id="simplefin-token-help" className="mt-2 text-xs text-muted-foreground">
               Get a setup token from{" "}
               <a
                 href="https://beta-bridge.simplefin.org/"
