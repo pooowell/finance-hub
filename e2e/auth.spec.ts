@@ -166,8 +166,7 @@ test.describe("Authentication", () => {
     test("should be keyboard navigable", async ({ page }) => {
       await page.goto("/dashboard");
 
-      // Tab through form elements
-      await page.keyboard.press("Tab");
+      // Tab to the first focusable element (email input)
       await page.keyboard.press("Tab");
 
       // Should be able to type in focused email field
