@@ -7,6 +7,7 @@ import { lucia, validateRequest } from "./index";
 import { hashPassword, verifyPassword } from "./password";
 import { db, users } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { signinLimiter, signupLimiter } from "./rate-limit";
 
 interface AuthResult {
   error?: string;
@@ -26,6 +27,12 @@ export async function signup(
   }
 
   const normalizedEmail = email.toLowerCase().trim();
+
+  // Rate limit
+  const signupLimit = signupLimiter.checkLimit(normalizedEmail, 10, 60 * 60 * 1000);
+  if (!signupLimit.allowed) {
+    return { error: "Too many attempts. Please try again later." };
+  }
 
   // Check if user already exists
   const existingUser = db
@@ -77,6 +84,12 @@ export async function signin(
   }
 
   const normalizedEmail = email.toLowerCase().trim();
+
+  // Rate limit
+  const signinLimit = signinLimiter.checkLimit(normalizedEmail, 5, 15 * 60 * 1000);
+  if (!signinLimit.allowed) {
+    return { error: "Too many attempts. Please try again later." };
+  }
 
   // Find user
   const user = db
