@@ -65,25 +65,31 @@ export function AuthForm({ onSuccess }: AuthFormProps) {
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">Email</label>
+          <label htmlFor="auth-email" className="block text-sm font-medium mb-2">Email</label>
           <input
+            id="auth-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
             className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             disabled={isPending}
+            aria-required="true"
+            autoComplete="email"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-2">Password</label>
+          <label htmlFor="auth-password" className="block text-sm font-medium mb-2">Password</label>
           <input
+            id="auth-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
             className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             disabled={isPending}
+            aria-required="true"
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
           />
         </div>
         <Button type="submit" disabled={isPending} className="w-full">
