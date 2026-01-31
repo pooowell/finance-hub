@@ -9,6 +9,10 @@ vi.mock("@/lib/auth", () => ({
   validateRequest: vi.fn(),
 }));
 
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 // We mock the entire db module so we never touch a real SQLite file.
 // Each chainable method returns `this` so calls like
 //   db.select().from().where().get()   resolve correctly.
@@ -54,6 +58,7 @@ const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 // ---------------------------------------------------------------------------
 
 const fakeUser = { id: "user-1", email: "a@b.com" };
+const fakeSession = { id: "sess-1", userId: fakeUser.id, expiresAt: new Date() };
 
 /** Reset every mock fn hanging off the db proxy and all other mocks */
 function resetDbChain() {
@@ -114,7 +119,7 @@ describe("updateAccount", () => {
   it("returns error when account not found", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
     mockSelectGet(undefined); // no row
 
@@ -126,7 +131,7 @@ describe("updateAccount", () => {
   it("returns error when user does not own the account", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
     mockSelectGet({ id: "acc-1", userId: "someone-else" });
 
@@ -138,7 +143,7 @@ describe("updateAccount", () => {
   it("succeeds and calls revalidatePath when valid", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
     mockSelectGet({ id: "acc-1", userId: fakeUser.id });
     mockUpdateRun();
@@ -157,7 +162,7 @@ describe("updateAccount", () => {
   it("returns error message when db.update throws", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
     mockSelectGet({ id: "acc-1", userId: fakeUser.id });
 
@@ -195,14 +200,10 @@ describe("getRecentTransactions", () => {
   it("returns empty array when user has no accounts", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
-    // First .all() → accounts query returns []
-    mockDb.select.mockReturnValue(mockDb);
-    mockDb.from.mockReturnValue(mockDb);
-    mockDb.where.mockReturnValue(mockDb);
-    mockDb.all.mockReturnValue([]);
+    mockSelectAll([]);
 
     const result = await getRecentTransactions(5);
 
@@ -212,7 +213,7 @@ describe("getRecentTransactions", () => {
   it("returns transactions with correct account_name mapping", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
     const userAccounts = [
@@ -272,7 +273,7 @@ describe("getRecentTransactions", () => {
   it("uses 'Unknown Account' when account id not in map", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
     let callCount = 0;
@@ -330,13 +331,10 @@ describe("getAllTransactions", () => {
   it("returns empty when user has no accounts", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
-    mockDb.select.mockReturnValue(mockDb);
-    mockDb.from.mockReturnValue(mockDb);
-    mockDb.where.mockReturnValue(mockDb);
-    mockDb.all.mockReturnValue([]);
+    mockSelectAll([]);
 
     const result = await getAllTransactions();
 
@@ -346,7 +344,7 @@ describe("getAllTransactions", () => {
   it("returns spending summaries with correct calculations", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
     const now = new Date();
@@ -442,10 +440,10 @@ describe("getAllTransactions", () => {
     expect(s1y.transactionCount).toBe(3);
   });
 
-  it("handles zero-amount and positive-only transactions", async () => {
+  it("handles positive-only transactions (income, no spending)", async () => {
     mockValidateRequest.mockResolvedValue({
       user: fakeUser,
-      session: {} as any,
+      session: fakeSession,
     });
 
     const now = new Date();
