@@ -25,17 +25,17 @@ const { dbQueue, mockDb, mockValidateRequest, mockGenerateId } = vi.hoisted(() =
         if (prop === "get") return () => queue.shift();
         if (prop === "run") return () => queue.shift() ?? { changes: 0 };
         // Chain methods (from, where, set, values, orderBy, etc.)
-        return (..._args: unknown[]) => createChain();
+        return () => createChain();
       },
     });
   }
 
   return {
     dbQueue: queue,
-    mockDb: new Proxy({} as Record<string, (..._args: unknown[]) => QueryChain>, {
+    mockDb: new Proxy({} as Record<string, (...args: unknown[]) => QueryChain>, {
       get(_target, prop: string) {
         if (["select", "insert", "update", "delete"].includes(prop)) {
-          return (..._args: unknown[]) => createChain();
+          return () => createChain();
         }
         return undefined;
       },
