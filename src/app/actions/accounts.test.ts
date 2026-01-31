@@ -57,8 +57,8 @@ const mockDb = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const fakeUser = { id: "user-1", email: "a@b.com" };
-const fakeSession = { id: "sess-1", userId: fakeUser.id, expiresAt: new Date() };
+const fakeUser = { id: "user-1", email: "a@b.com", fullName: "Test User", avatarUrl: null };
+const fakeSession = { id: "sess-1", userId: fakeUser.id, expiresAt: new Date(), fresh: false };
 
 /** Reset every mock fn hanging off the db proxy and all other mocks */
 function resetDbChain() {
