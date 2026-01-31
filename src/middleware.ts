@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
 /**
  * Security headers applied to every response.
@@ -33,7 +32,7 @@ function getSecurityHeaders(): Record<string, string> {
   };
 }
 
-export function middleware(request: NextRequest) {
+export function middleware() {
   const response = NextResponse.next();
 
   const headers = getSecurityHeaders();
