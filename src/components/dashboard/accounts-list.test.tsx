@@ -105,7 +105,7 @@ describe("AccountsList", () => {
       ];
       render(<AccountsList accounts={accounts} />);
 
-      const accountNames = screen.getAllByText(/Balance/).map((el) => el.textContent);
+      const accountNames = screen.getAllByText(/Balance/).map((el: HTMLElement) => el.textContent);
       expect(accountNames).toEqual(["High Balance", "Mid Balance", "Low Balance"]);
     });
 
@@ -118,8 +118,8 @@ describe("AccountsList", () => {
 
       const names = screen
         .getAllByText(/Account/)
-        .filter((el) => el.closest("[class*='font-medium']"))
-        .map((el) => el.textContent);
+        .filter((el: HTMLElement) => el.closest("[class*='font-medium']"))
+        .map((el: HTMLElement) => el.textContent);
       expect(names[0]).toBe("Positive Account");
     });
   });
