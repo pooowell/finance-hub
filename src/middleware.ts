@@ -32,7 +32,7 @@ function getSecurityHeaders(): Record<string, string> {
   };
 }
 
-export function middleware() {
+export function middleware(_request: import("next/server").NextRequest) {
   const response = NextResponse.next();
 
   const headers = getSecurityHeaders();
