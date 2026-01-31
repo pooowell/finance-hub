@@ -1,27 +1,41 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // --- Hoisted mock infrastructure (available inside vi.mock factories) ---
-const { dbQueue, mockDb, mockValidateRequest, mockGenerateId } = vi.hoisted(() => {
-  const queue: any[] = [];
 
-  function createChain(): any {
-    return new Proxy({} as any, {
-      get(_, prop: string) {
+/** Chainable query proxy interface for type-safe mocking */
+interface QueryChain {
+  from: (..._args: unknown[]) => QueryChain;
+  where: (..._args: unknown[]) => QueryChain;
+  orderBy: (..._args: unknown[]) => QueryChain;
+  set: (..._args: unknown[]) => QueryChain;
+  values: (..._args: unknown[]) => QueryChain;
+  limit: (..._args: unknown[]) => QueryChain;
+  all: () => unknown;
+  get: () => unknown;
+  run: () => unknown;
+}
+
+const { dbQueue, mockDb, mockValidateRequest, mockGenerateId } = vi.hoisted(() => {
+  const queue: Array<unknown> = [];
+
+  function createChain(): QueryChain {
+    return new Proxy({} as QueryChain, {
+      get(_target, prop: string) {
         if (prop === "all") return () => queue.shift() ?? [];
         if (prop === "get") return () => queue.shift();
         if (prop === "run") return () => queue.shift() ?? { changes: 0 };
         // Chain methods (from, where, set, values, orderBy, etc.)
-        return (..._args: any[]) => createChain();
+        return (..._args: unknown[]) => createChain();
       },
     });
   }
 
   return {
     dbQueue: queue,
-    mockDb: new Proxy({} as any, {
-      get(_, prop: string) {
+    mockDb: new Proxy({} as Record<string, (..._args: unknown[]) => QueryChain>, {
+      get(_target, prop: string) {
         if (["select", "insert", "update", "delete"].includes(prop)) {
-          return (..._args: any[]) => createChain();
+          return (..._args: unknown[]) => createChain();
         }
         return undefined;
       },
@@ -62,7 +76,8 @@ import {
 // --- Test fixtures ---
 const mockUser = { id: "user-1", email: "test@example.com" };
 
-const now = new Date();
+// Freeze time for deterministic period-based assertions
+const now = new Date("2026-01-15T12:00:00Z");
 const hoursAgo = (h: number) =>
   new Date(now.getTime() - h * 60 * 60 * 1000).toISOString();
 const daysAgo = (d: number) =>
@@ -81,6 +96,12 @@ describe("transactions actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dbQueue.length = 0;
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // ---------------------------------------------------------------
