@@ -327,16 +327,10 @@ describe("Solana server actions", () => {
 
     it("returns error when outer try/catch triggers", async () => {
       authed();
-      // Force the .all() call to throw by pushing nothing and making the proxy
-      // chain throw. We'll mock validateRequest to throw from within.
-      vi.mocked(validateRequest).mockResolvedValue({
-        user: MOCK_USER,
-        session: { id: "s", userId: MOCK_USER.id, expiresAt: Date.now() },
-      } as never);
 
-      // Simulate db throwing on the select chain — push a value that will
-      // make code blow up when it tries to read .length
-      dbQueue.push(null); // .all() returns null → `.length` throws
+      // Simulate a null result from the DB (via dbQueue.push(null)) which
+      // causes .all() to return null and triggers a .length error
+      dbQueue.push(null);
 
       const result = await syncSolanaWallets();
       expect(result).toEqual({ error: "Failed to sync wallets" });
