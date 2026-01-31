@@ -1,10 +1,18 @@
 "use client";
 
-import { useTransition } from "react";
-import { Wallet, Building2, Eye, EyeOff, DollarSign } from "lucide-react";
+import {
+  Wallet,
+  Building2,
+  CreditCard,
+  PiggyBank,
+  TrendingUp,
+  Landmark,
+  Bitcoin,
+  HelpCircle,
+  DollarSign,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { updateAccount } from "@/app/actions/accounts";
-import type { Account, AccountCategory } from "@/types/database";
+import type { Account } from "@/lib/db/schema";
 
 interface AccountsTabProps {
   accounts: Account[];
@@ -13,28 +21,75 @@ interface AccountsTabProps {
   onAccountUpdate: () => void;
 }
 
-const CATEGORIES: { id: AccountCategory | null; label: string }[] = [
-  { id: "checking", label: "Checking" },
-  { id: "savings", label: "Savings" },
-  { id: "credit_cards", label: "Credit Cards" },
-  { id: "retirement", label: "Retirement" },
-  { id: "assets", label: "Assets" },
-  { id: "crypto", label: "Crypto" },
-  { id: null, label: "Uncategorized" },
+type AccountCategory =
+  | "checking"
+  | "savings"
+  | "credit_cards"
+  | "retirement"
+  | "assets"
+  | "crypto";
+
+interface CategoryConfig {
+  id: AccountCategory | null;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  bgColor: string;
+}
+
+const CATEGORIES: CategoryConfig[] = [
+  {
+    id: "checking",
+    label: "Checking",
+    icon: <Landmark className="h-5 w-5" />,
+    color: "text-blue-500",
+    bgColor: "bg-blue-500/10",
+  },
+  {
+    id: "savings",
+    label: "Savings",
+    icon: <PiggyBank className="h-5 w-5" />,
+    color: "text-green-500",
+    bgColor: "bg-green-500/10",
+  },
+  {
+    id: "credit_cards",
+    label: "Credit Cards",
+    icon: <CreditCard className="h-5 w-5" />,
+    color: "text-orange-500",
+    bgColor: "bg-orange-500/10",
+  },
+  {
+    id: "retirement",
+    label: "Retirement",
+    icon: <TrendingUp className="h-5 w-5" />,
+    color: "text-purple-500",
+    bgColor: "bg-purple-500/10",
+  },
+  {
+    id: "assets",
+    label: "Assets",
+    icon: <Building2 className="h-5 w-5" />,
+    color: "text-emerald-500",
+    bgColor: "bg-emerald-500/10",
+  },
+  {
+    id: "crypto",
+    label: "Crypto",
+    icon: <Bitcoin className="h-5 w-5" />,
+    color: "text-yellow-500",
+    bgColor: "bg-yellow-500/10",
+  },
+  {
+    id: null,
+    label: "Uncategorized",
+    icon: <HelpCircle className="h-5 w-5" />,
+    color: "text-gray-400",
+    bgColor: "bg-gray-500/10",
+  },
 ];
 
-const CATEGORY_OPTIONS: { value: AccountCategory | ""; label: string }[] = [
-  { value: "", label: "Uncategorized" },
-  { value: "checking", label: "Checking" },
-  { value: "savings", label: "Savings" },
-  { value: "credit_cards", label: "Credit Cards" },
-  { value: "retirement", label: "Retirement" },
-  { value: "assets", label: "Assets" },
-  { value: "crypto", label: "Crypto" },
-];
-
-function formatCurrency(value: number | null): string {
-  if (value === null) return "N/A";
+function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -43,148 +98,44 @@ function formatCurrency(value: number | null): string {
   }).format(value);
 }
 
-function getAccountIcon(provider: string) {
-  switch (provider) {
-    case "Solana":
-      return <Wallet className="h-5 w-5" />;
-    case "SimpleFIN":
-      return <Building2 className="h-5 w-5" />;
-    default:
-      return <Wallet className="h-5 w-5" />;
-  }
-}
-
-interface AccountRowProps {
-  account: Account;
-  onUpdate: () => void;
-}
-
-function AccountRow({ account, onUpdate }: AccountRowProps) {
-  const [isPending, startTransition] = useTransition();
-
-  const handleToggleHidden = () => {
-    startTransition(async () => {
-      await updateAccount(account.id, { is_hidden: !account.isHidden });
-      onUpdate();
-    });
-  };
-
-  const handleToggleNetWorth = () => {
-    startTransition(async () => {
-      await updateAccount(account.id, {
-        include_in_net_worth: !account.includeInNetWorth,
-      });
-      onUpdate();
-    });
-  };
-
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as AccountCategory | "";
-    startTransition(async () => {
-      await updateAccount(account.id, {
-        category: value === "" ? null : value,
-      });
-      onUpdate();
-    });
-  };
-
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between p-4 hover:bg-muted/50 transition-colors",
-        account.isHidden && "opacity-60"
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-muted">
-          {getAccountIcon(account.provider)}
-        </div>
-        <div>
-          <p className="font-medium">{account.name}</p>
-          <p className="text-sm text-muted-foreground">{account.provider}</p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4">
-        {/* Category dropdown */}
-        <select
-          value={account.category ?? ""}
-          onChange={handleCategoryChange}
-          disabled={isPending}
-          className="px-2 py-1 text-sm rounded border border-input bg-background"
-        >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
-        {/* Include in net worth toggle */}
-        <button
-          onClick={handleToggleNetWorth}
-          disabled={isPending}
-          className={cn(
-            "p-2 rounded-lg transition-colors",
-            account.includeInNetWorth
-              ? "bg-green-500/10 text-green-500"
-              : "bg-muted text-muted-foreground"
-          )}
-          title={
-            account.includeInNetWorth
-              ? "Included in net worth"
-              : "Excluded from net worth"
-          }
-        >
-          <DollarSign className="h-4 w-4" />
-        </button>
-
-        {/* Hide toggle */}
-        <button
-          onClick={handleToggleHidden}
-          disabled={isPending}
-          className={cn(
-            "p-2 rounded-lg transition-colors",
-            account.isHidden
-              ? "bg-muted text-muted-foreground"
-              : "bg-primary/10 text-primary"
-          )}
-          title={account.isHidden ? "Show account" : "Hide account"}
-        >
-          {account.isHidden ? (
-            <EyeOff className="h-4 w-4" />
-          ) : (
-            <Eye className="h-4 w-4" />
-          )}
-        </button>
-
-        {/* Balance */}
-        <div className="text-right min-w-[100px]">
-          <p className="font-semibold">{formatCurrency(account.balanceUsd)}</p>
-        </div>
-      </div>
-    </div>
-  );
+interface CategorySummary {
+  config: CategoryConfig;
+  total: number;
+  accountCount: number;
+  includeInNetWorth: boolean;
 }
 
 export function AccountsTab({
   accounts,
   showHidden,
   onShowHiddenChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onAccountUpdate,
 }: AccountsTabProps) {
-  // Filter accounts based on showHidden
+  // Only include visible accounts (unless showHidden is on)
   const visibleAccounts = showHidden
     ? accounts
     : accounts.filter((a) => !a.isHidden);
 
-  // Group accounts by category
-  const groupedAccounts = CATEGORIES.map((cat) => ({
-    ...cat,
-    accounts: visibleAccounts.filter((a) =>
-      cat.id === null ? !a.category : a.category === cat.id
-    ),
-  })).filter((group) => group.accounts.length > 0);
+  // Aggregate by category
+  const categorySummaries: CategorySummary[] = CATEGORIES.map((config) => {
+    const catAccounts = visibleAccounts.filter((a) =>
+      config.id === null ? !a.category : a.category === config.id
+    );
+    const total = catAccounts.reduce((sum, a) => sum + (a.balanceUsd ?? 0), 0);
+    const allIncluded = catAccounts.every((a) => a.includeInNetWorth);
+    return {
+      config,
+      total,
+      accountCount: catAccounts.length,
+      includeInNetWorth: allIncluded,
+    };
+  }).filter((s) => s.accountCount > 0);
+
+  // Net worth total (only accounts marked includeInNetWorth)
+  const netWorthTotal = visibleAccounts
+    .filter((a) => a.includeInNetWorth)
+    .reduce((sum, a) => sum + (a.balanceUsd ?? 0), 0);
 
   const hiddenCount = accounts.filter((a) => a.isHidden).length;
 
@@ -201,44 +152,106 @@ export function AccountsTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Net Worth Header */}
+      <div className="bg-card rounded-lg border border-border p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Net Worth</p>
+            <h2 className="text-3xl font-bold tracking-tight">
+              {formatCurrency(netWorthTotal)}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {visibleAccounts.length} account{visibleAccounts.length !== 1 ? "s" : ""} across {categorySummaries.length} categor{categorySummaries.length !== 1 ? "ies" : "y"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-8 w-8 text-primary opacity-20" />
+          </div>
+        </div>
+      </div>
+
       {/* Show hidden toggle */}
       {hiddenCount > 0 && (
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => onShowHiddenChange(e.target.checked)}
-              className="rounded border-input"
-            />
-            <span className="text-sm text-muted-foreground">
-              Show hidden accounts ({hiddenCount})
-            </span>
-          </label>
-        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showHidden}
+            onChange={(e) => onShowHiddenChange(e.target.checked)}
+            className="rounded border-input"
+          />
+          <span className="text-sm text-muted-foreground">
+            Show hidden accounts ({hiddenCount})
+          </span>
+        </label>
       )}
 
-      {/* Grouped accounts */}
-      {groupedAccounts.map((group) => (
-        <div
-          key={group.id ?? "uncategorized"}
-          className="bg-card rounded-lg border border-border"
-        >
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">{group.label}</h3>
-          </div>
-          <div className="divide-y divide-border">
-            {group.accounts.map((account) => (
-              <AccountRow
-                key={account.id}
-                account={account}
-                onUpdate={onAccountUpdate}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* Category Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {categorySummaries.map((summary) => {
+          const isNegative = summary.total < 0;
+          return (
+            <div
+              key={summary.config.id ?? "uncategorized"}
+              className="bg-card rounded-lg border border-border p-5 hover:border-primary/30 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      "p-2.5 rounded-lg",
+                      summary.config.bgColor,
+                      summary.config.color
+                    )}
+                  >
+                    {summary.config.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">{summary.config.label}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {summary.accountCount} account{summary.accountCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+                {!summary.includeInNetWorth && (
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                    Excluded
+                  </span>
+                )}
+              </div>
+              <p
+                className={cn(
+                  "text-2xl font-bold",
+                  isNegative ? "text-red-500" : "text-foreground"
+                )}
+              >
+                {formatCurrency(summary.total)}
+              </p>
+              {/* Percentage of net worth */}
+              {netWorthTotal !== 0 && summary.includeInNetWorth && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span>
+                      {Math.abs((summary.total / netWorthTotal) * 100).toFixed(1)}% of net worth
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        summary.config.bgColor.replace("/10", "/40")
+                      )}
+                      style={{
+                        width: `${Math.min(Math.abs((summary.total / netWorthTotal) * 100), 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
