@@ -32,6 +32,7 @@ function getSecurityHeaders(): Record<string, string> {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function middleware(_request: import("next/server").NextRequest) {
   const response = NextResponse.next();
 
