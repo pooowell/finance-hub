@@ -18,12 +18,24 @@ vi.mock("./solana", () => ({
 }));
 
 // Proxy-based drizzle mock — mirrors the lazy-proxy pattern in @/lib/db
+
+/** Chainable query interface for type-safe drizzle mocking */
+interface QueryChain {
+  from: ReturnType<typeof vi.fn>;
+  where: ReturnType<typeof vi.fn>;
+  orderBy: ReturnType<typeof vi.fn>;
+  all: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+  run: ReturnType<typeof vi.fn>;
+  set: ReturnType<typeof vi.fn>;
+}
+
 const mockAll = vi.fn().mockReturnValue([]);
 const mockGet = vi.fn().mockReturnValue(undefined);
 const mockRun = vi.fn();
 
-const chainMethods = () => {
-  const chain: Record<string, any> = {};
+const chainMethods = (): QueryChain => {
+  const chain = {} as QueryChain;
   chain.from = vi.fn().mockReturnValue(chain);
   chain.where = vi.fn().mockReturnValue(chain);
   chain.orderBy = vi.fn().mockReturnValue(chain);
@@ -61,9 +73,9 @@ vi.mock("@/lib/db", () => {
   };
 
   const db = new Proxy(
-    {},
+    {} as Record<string, unknown>,
     {
-      get(_, prop) {
+      get(_target, prop: string) {
         if (prop === "select") return mockSelect;
         if (prop === "insert") return mockInsert;
         if (prop === "update") return mockUpdate;
@@ -94,8 +106,8 @@ const mockUser = { id: "user-1", email: "test@example.com" };
 function authed() {
   vi.mocked(validateRequest).mockResolvedValue({
     user: mockUser,
-    session: { id: "sess-1" },
-  } as any);
+    session: { id: "sess-1", userId: mockUser.id, expiresAt: new Date() },
+  } as Awaited<ReturnType<typeof validateRequest>>);
 }
 
 function unauthed() {
@@ -130,10 +142,10 @@ describe("syncAllAccounts", () => {
     authed();
     vi.mocked(syncSimpleFINAccounts).mockResolvedValue({
       accountCount: 3,
-    } as any);
+    } as Awaited<ReturnType<typeof syncSimpleFINAccounts>>);
     vi.mocked(syncSolanaWallets).mockResolvedValue({
       synced: 2,
-    } as any);
+    } as Awaited<ReturnType<typeof syncSolanaWallets>>);
 
     const result = await syncAllAccounts();
 
@@ -150,7 +162,7 @@ describe("syncAllAccounts", () => {
     vi.mocked(syncSimpleFINAccounts).mockRejectedValue(
       new Error("SimpleFIN API down")
     );
-    vi.mocked(syncSolanaWallets).mockResolvedValue({ synced: 1 } as any);
+    vi.mocked(syncSolanaWallets).mockResolvedValue({ synced: 1 } as Awaited<ReturnType<typeof syncSolanaWallets>>);
 
     const result = await syncAllAccounts();
 
