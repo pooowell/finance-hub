@@ -91,7 +91,7 @@ function unauthed() {
   } as never);
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const _DAY_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Tests — getPortfolioHistory
