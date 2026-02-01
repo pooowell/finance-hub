@@ -3,7 +3,9 @@ import {
   parseAccessUrl,
   claimSetupToken,
   fetchAccounts,
+  fetchWithRetry,
   validateAccessUrl,
+  RETRY_DEFAULTS,
 } from "./client";
 import type { SimpleFINAccountSet, SimpleFINCredentials } from "@/types/simplefin";
 
@@ -211,11 +213,17 @@ describe("SimpleFIN Client", () => {
     });
 
     it("should throw on other API errors", async () => {
-      mockFetch.mockResolvedValueOnce({
+      const error500 = {
         ok: false,
         status: 500,
         statusText: "Internal Server Error",
-      });
+      };
+      // fetchWithRetry retries 5xx – provide enough mocks to exhaust retries
+      mockFetch
+        .mockResolvedValueOnce(error500)
+        .mockResolvedValueOnce(error500)
+        .mockResolvedValueOnce(error500)
+        .mockResolvedValueOnce(error500);
 
       await expect(fetchAccounts(mockCredentials)).rejects.toThrow(
         "SimpleFIN API error: Internal Server Error"
@@ -250,6 +258,163 @@ describe("SimpleFIN Client", () => {
       const callUrl = mockFetch.mock.calls[0][0];
       expect(callUrl).toContain("/accounts");
       expect(callUrl).not.toContain("//accounts");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // fetchWithRetry
+  // -----------------------------------------------------------------------
+  describe("fetchWithRetry", () => {
+    /** Fast config so tests don't actually wait. */
+    const fastConfig = { maxRetries: 3, baseDelayMs: 1, timeoutMs: 5_000 };
+
+    it("should return response on 200", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.ok).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should retry on 500 and eventually return last response", async () => {
+      const serverError = { ok: false, status: 500, statusText: "Internal Server Error" };
+      mockFetch
+        .mockResolvedValueOnce(serverError)
+        .mockResolvedValueOnce(serverError)
+        .mockResolvedValueOnce(serverError)
+        .mockResolvedValueOnce(serverError); // initial + 3 retries
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.status).toBe(500);
+      expect(mockFetch).toHaveBeenCalledTimes(4); // 1 + 3 retries
+    });
+
+    it("should succeed on retry after transient 500", async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 502, statusText: "Bad Gateway" })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.ok).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should NOT retry on 4xx (e.g. 404)", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, statusText: "Not Found" });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.status).toBe(404);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should NOT retry on 403", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 403, statusText: "Forbidden" });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.status).toBe(403);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should retry on 429 (Too Many Requests)", async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 429, statusText: "Too Many Requests" })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.ok).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should retry on network errors (TypeError)", async () => {
+      mockFetch
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const res = await fetchWithRetry("https://example.com", undefined, fastConfig);
+
+      expect(res.ok).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should throw after exhausting retries on network error", async () => {
+      const networkErr = new TypeError("fetch failed");
+      mockFetch
+        .mockRejectedValueOnce(networkErr)
+        .mockRejectedValueOnce(networkErr)
+        .mockRejectedValueOnce(networkErr)
+        .mockRejectedValueOnce(networkErr);
+
+      await expect(
+        fetchWithRetry("https://example.com", undefined, fastConfig)
+      ).rejects.toThrow("fetch failed");
+
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it("should apply AbortSignal timeout to each request", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      await fetchWithRetry("https://example.com", undefined, {
+        ...fastConfig,
+        timeoutMs: 10_000,
+      });
+
+      // Verify signal was passed
+      const callInit = mockFetch.mock.calls[0][1];
+      expect(callInit.signal).toBeDefined();
+      expect(callInit.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("should merge init options with signal", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      await fetchWithRetry(
+        "https://example.com",
+        { method: "POST", headers: { "X-Custom": "yes" } },
+        fastConfig,
+      );
+
+      const callInit = mockFetch.mock.calls[0][1];
+      expect(callInit.method).toBe("POST");
+      expect(callInit.headers["X-Custom"]).toBe("yes");
+      expect(callInit.signal).toBeDefined();
+    });
+
+    it("should use RETRY_DEFAULTS when no config provided", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      // Just verify it doesn't throw and uses defaults
+      const res = await fetchWithRetry("https://example.com");
+      expect(res.ok).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // RETRY_DEFAULTS config
+  // -----------------------------------------------------------------------
+  describe("RETRY_DEFAULTS", () => {
+    it("claim config should have 30s timeout", () => {
+      expect(RETRY_DEFAULTS.claim.timeoutMs).toBe(30_000);
+      expect(RETRY_DEFAULTS.claim.maxRetries).toBe(3);
+    });
+
+    it("accounts config should have 60s timeout", () => {
+      expect(RETRY_DEFAULTS.accounts.timeoutMs).toBe(60_000);
+      expect(RETRY_DEFAULTS.accounts.maxRetries).toBe(3);
+    });
+
+    it("should be mutable for testing overrides", () => {
+      const original = { ...RETRY_DEFAULTS.claim };
+      RETRY_DEFAULTS.claim.maxRetries = 0;
+      expect(RETRY_DEFAULTS.claim.maxRetries).toBe(0);
+      // Restore
+      Object.assign(RETRY_DEFAULTS.claim, original);
     });
   });
 
