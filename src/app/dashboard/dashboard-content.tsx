@@ -16,6 +16,7 @@ import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
 import { signout } from "@/lib/auth/actions";
 import type { Account } from "@/lib/db/schema";
+import { calculate24hChange, type ChartDataPoint } from "@/lib/portfolio";
 
 interface PortfolioData {
   totalValueUsd: number;
@@ -23,11 +24,6 @@ interface PortfolioData {
   lastSynced: string | null;
   change24h: number;
   changePercent24h: number;
-}
-
-interface ChartDataPoint {
-  timestamp: string;
-  value: number;
 }
 
 export function DashboardContent() {
@@ -57,12 +53,17 @@ export function DashboardContent() {
           getSolanaWallets(),
         ]);
 
+      const { change24h, changePercent24h } = calculate24hChange(
+        historyResult,
+        portfolioResult.totalValueUsd,
+      );
+
       setPortfolioData({
         totalValueUsd: portfolioResult.totalValueUsd,
         accountCount: portfolioResult.accountCount,
         lastSynced: portfolioResult.lastSynced,
-        change24h: 0, // TODO: Calculate from history
-        changePercent24h: 0,
+        change24h,
+        changePercent24h,
       });
 
       setChartData(historyResult);
@@ -105,12 +106,17 @@ export function DashboardContent() {
             getSolanaWallets(),
           ]);
 
+        const { change24h, changePercent24h } = calculate24hChange(
+          historyResult,
+          portfolioResult.totalValueUsd,
+        );
+
         setPortfolioData({
           totalValueUsd: portfolioResult.totalValueUsd,
           accountCount: portfolioResult.accountCount,
           lastSynced: portfolioResult.lastSynced,
-          change24h: 0,
-          changePercent24h: 0,
+          change24h,
+          changePercent24h,
         });
 
         setChartData(historyResult);
