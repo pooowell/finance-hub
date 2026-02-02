@@ -177,7 +177,9 @@ describe("retry utilities", () => {
 
       const error = await rejection;
       expect(error).toBeInstanceOf(Error);
-      expect(error.message).toBe("timeout");
+      if (error instanceof Error) {
+        expect(error.message).toBe("timeout");
+      }
       expect(fn).toHaveBeenCalledTimes(3);
     });
 

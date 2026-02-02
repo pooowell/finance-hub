@@ -118,6 +118,7 @@ export async function withRetry<T>(
   options?: RetryOptions
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  opts.maxAttempts = Math.max(1, Number(opts.maxAttempts) || 1);
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
