@@ -80,7 +80,7 @@ const MOCK_USER = { id: "user-1", email: "test@example.com" };
 function authed() {
   vi.mocked(validateRequest).mockResolvedValue({
     user: MOCK_USER,
-    session: { id: "sess-1", userId: MOCK_USER.id, expiresAt: Date.now() },
+    session: { id: "sess-1", userId: MOCK_USER.id, expiresAt: new Date() },
   } as never);
 }
 
@@ -90,8 +90,6 @@ function unauthed() {
     session: null,
   } as never);
 }
-
-const _DAY_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Tests — getPortfolioHistory

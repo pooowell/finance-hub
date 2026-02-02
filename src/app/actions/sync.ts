@@ -185,7 +185,7 @@ export async function getPortfolioHistory(options?: {
     const bucketKey = Math.floor(ts / bucketMs) * bucketMs;
 
     // Update this account's latest value
-    lastKnownPerAccount.set(snapshot.accountId, snapshot.valueUsd);
+    lastKnownPerAccount.set(snapshot.accountId, snapshot.valueUsd ?? 0);
 
     // Recompute the total across ALL accounts' last-known values
     let total = 0;
