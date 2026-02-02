@@ -23,6 +23,7 @@ export interface FetchRetryOptions {
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_RETRY_AFTER_MS = 60_000; // 1 minute max
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
@@ -34,10 +35,10 @@ function getRetryAfterMs(headers: Headers): number | null {
 
   // retry-after can be seconds (integer) or an HTTP-date
   const seconds = Number(value);
-  if (!Number.isNaN(seconds)) return seconds * 1000;
+  if (!Number.isNaN(seconds)) return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
 
   const date = Date.parse(value);
-  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  if (!Number.isNaN(date)) return Math.min(Math.max(0, date - Date.now()), MAX_RETRY_AFTER_MS);
 
   return null;
 }
@@ -65,19 +66,39 @@ export async function fetchWithRetry(
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+
+    const clearTimer = () => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+        timeoutId = undefined;
+      }
+    };
+
     try {
       // Per-request timeout via AbortSignal
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      // Merge caller's signal with our timeout
+      // Merge caller's signal with our timeout — respect both
+      let signal: AbortSignal = controller.signal;
+      if (init?.signal) {
+        if (typeof AbortSignal.any === "function") {
+          signal = AbortSignal.any([controller.signal, init.signal]);
+        } else {
+          // Fallback: forward caller abort to our controller
+          const onCallerAbort = () => controller.abort();
+          init.signal.addEventListener("abort", onCallerAbort, { once: true });
+        }
+      }
+
       const mergedInit: RequestInit = {
         ...init,
-        signal: controller.signal,
+        signal,
       };
 
       const response = await fetch(input, mergedInit);
-      clearTimeout(timeoutId);
+      clearTimer();
 
       if (!isRetryableStatus(response.status) || attempt === maxRetries) {
         return response;
@@ -93,7 +114,7 @@ export async function fetchWithRetry(
 
       await sleep(delay);
     } catch (error: unknown) {
-      clearTimerSafe();
+      clearTimer();
 
       const isNetworkError =
         error instanceof TypeError ||
@@ -120,9 +141,4 @@ export async function fetchWithRetry(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Safety no-op in case clearTimeout was missed in a catch */
-function clearTimerSafe() {
-  // intentional no-op — timers auto-clear on abort
 }
