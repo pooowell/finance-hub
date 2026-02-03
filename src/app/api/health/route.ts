@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
+import packageJson from "../../../../package.json";
 
 const startTime = Date.now();
 
 // Read version once at module load
-const version = process.env.npm_package_version ?? require("../../../../package.json").version ?? "unknown";
+const version = process.env.npm_package_version ?? packageJson.version ?? "unknown";
 
 export async function GET() {
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
