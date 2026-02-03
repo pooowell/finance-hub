@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock fetchWithRetry before importing prices module
 vi.mock("@/lib/utils/fetch-retry", () => ({
   fetchWithRetry: vi.fn(),
 }));
 
-import { getJupiterPrices, getSolPrice, getTokenPrices, formatUsdValue, formatTokenBalance } from "./prices";
+import { getJupiterPrices, getSolPrice, formatUsdValue, formatTokenBalance } from "./prices";
 import { fetchWithRetry } from "@/lib/utils/fetch-retry";
 
 const mockFetchWithRetry = vi.mocked(fetchWithRetry);
