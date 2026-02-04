@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { z } from "zod";
 
 /**
@@ -11,12 +11,12 @@ const envSchema = z.object({
   SOLANA_RPC_URL: z.string().default("https://api.mainnet-beta.solana.com"),
   LOG_LEVEL: z
     .enum(["debug", "info", "warn", "error"])
-    .default("info")
-    .optional(),
+    .optional()
+    .default("info"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
-    .default("development")
-    .optional(),
+    .optional()
+    .default("development"),
 });
 
 describe("env validation", () => {

@@ -10,12 +10,12 @@ const envSchema = z.object({
   SOLANA_RPC_URL: z.string().default("https://api.mainnet-beta.solana.com"),
   LOG_LEVEL: z
     .enum(["debug", "info", "warn", "error"])
-    .default("info")
-    .optional(),
+    .optional()
+    .default("info"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
-    .default("development")
-    .optional(),
+    .optional()
+    .default("development"),
 });
 
 export type Env = z.infer<typeof envSchema>;
