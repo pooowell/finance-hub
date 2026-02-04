@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConnectAccount } from "./connect-account";
@@ -118,7 +118,7 @@ describe("ConnectAccount", () => {
 
     it("enables Connect Wallet button when address has content", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      mockConnectSolanaWallet.mockResolvedValue({ totalValueUsd: 0 });
+      mockConnectSolanaWallet.mockResolvedValue({ success: true, totalValueUsd: 0, tokenCount: 0 });
       render(<ConnectAccount />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
 
@@ -131,7 +131,7 @@ describe("ConnectAccount", () => {
   describe("successful Solana wallet connection", () => {
     it("calls connectSolanaWallet and shows success message", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      mockConnectSolanaWallet.mockResolvedValue({ totalValueUsd: 1234.56 });
+      mockConnectSolanaWallet.mockResolvedValue({ success: true, totalValueUsd: 1234.56, tokenCount: 0 });
 
       render(<ConnectAccount />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
@@ -148,7 +148,7 @@ describe("ConnectAccount", () => {
   describe("successful SimpleFIN connection", () => {
     it("calls connectSimpleFIN and shows success message", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      mockConnectSimpleFIN.mockResolvedValue({ accountCount: 3 });
+      mockConnectSimpleFIN.mockResolvedValue({ success: true, accountCount: 3 });
 
       render(<ConnectAccount />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
@@ -223,7 +223,7 @@ describe("ConnectAccount", () => {
     it("calls onSuccess after successful Solana connection", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const onSuccess = vi.fn();
-      mockConnectSolanaWallet.mockResolvedValue({ totalValueUsd: 100 });
+      mockConnectSolanaWallet.mockResolvedValue({ success: true, totalValueUsd: 100, tokenCount: 0 });
 
       render(<ConnectAccount onSuccess={onSuccess} />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
@@ -238,7 +238,7 @@ describe("ConnectAccount", () => {
     it("calls onSuccess after successful SimpleFIN connection", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const onSuccess = vi.fn();
-      mockConnectSimpleFIN.mockResolvedValue({ accountCount: 2 });
+      mockConnectSimpleFIN.mockResolvedValue({ success: true, accountCount: 2 });
 
       render(<ConnectAccount onSuccess={onSuccess} />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
@@ -271,7 +271,7 @@ describe("ConnectAccount", () => {
   describe("success auto-close", () => {
     it("auto-closes form after successful connection", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      mockConnectSolanaWallet.mockResolvedValue({ totalValueUsd: 500 });
+      mockConnectSolanaWallet.mockResolvedValue({ success: true, totalValueUsd: 500, tokenCount: 0 });
 
       render(<ConnectAccount />);
       await user.click(screen.getByRole("button", { name: /connect account/i }));
