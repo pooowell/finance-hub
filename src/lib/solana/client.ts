@@ -9,9 +9,10 @@ import type { SolanaTokenBalance, SolanaWalletData } from "@/types/solana";
 import { KNOWN_TOKENS } from "@/types/solana";
 import { getTokenPrices, getSolPrice } from "./prices";
 import { withRetry, SolanaInvalidAddressError } from "./retry";
+import { env } from "@/lib/env";
 
 // Default to public Solana mainnet RPC, can be overridden with env var
-const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const RPC_ENDPOINT = env.SOLANA_RPC_URL;
 
 /**
  * Result type for getMultipleWalletData — supports partial failures

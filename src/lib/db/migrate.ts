@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { env } from "@/lib/env";
 
 const getDatabasePath = () => {
-  const dbPath = process.env.DATABASE_PATH || "./data/finance-hub.db";
+  const dbPath = env.DATABASE_PATH;
   const absolutePath = path.isAbsolute(dbPath)
     ? dbPath
     : path.resolve(process.cwd(), dbPath);
