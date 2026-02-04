@@ -585,8 +585,8 @@ describe("SimpleFIN server actions", () => {
 
       expect(result).toEqual({ success: true, accountCount: 0 });
       expect(consoleSpy).toHaveBeenCalledWith(
-        "SimpleFIN returned errors:",
-        ["Institution temporarily unavailable"]
+        "[WARN] simplefin: SimpleFIN returned errors",
+        { errors: ["Institution temporarily unavailable"] }
       );
 
       consoleSpy.mockRestore();
