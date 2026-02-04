@@ -7,20 +7,18 @@ describe('logger', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
-  const originalEnv = { ...process.env };
 
   beforeEach(() => {
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     // Reset env
-    delete process.env.LOG_LEVEL;
-    delete process.env.NODE_ENV;
+    vi.unstubAllEnvs();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
   });
 
   // Fresh import each test to avoid module caching issues
@@ -50,7 +48,7 @@ describe('logger', () => {
     });
 
     it('should log debug messages when LOG_LEVEL=debug', async () => {
-      process.env.LOG_LEVEL = 'debug';
+      vi.stubEnv('LOG_LEVEL', 'debug');
       const logger = await getLogger();
       logger.debug('test', 'verbose stuff');
       expect(logSpy).toHaveBeenCalledTimes(1);
@@ -65,28 +63,28 @@ describe('logger', () => {
     });
 
     it('should filter info messages when LOG_LEVEL=warn', async () => {
-      process.env.LOG_LEVEL = 'warn';
+      vi.stubEnv('LOG_LEVEL', 'warn');
       const logger = await getLogger();
       logger.info('test', 'should not appear');
       expect(logSpy).not.toHaveBeenCalled();
     });
 
     it('should filter warn messages when LOG_LEVEL=error', async () => {
-      process.env.LOG_LEVEL = 'error';
+      vi.stubEnv('LOG_LEVEL', 'error');
       const logger = await getLogger();
       logger.warn('test', 'should not appear');
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it('should always show error when LOG_LEVEL=error', async () => {
-      process.env.LOG_LEVEL = 'error';
+      vi.stubEnv('LOG_LEVEL', 'error');
       const logger = await getLogger();
       logger.error('test', 'critical');
       expect(errorSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should show all levels when LOG_LEVEL=debug', async () => {
-      process.env.LOG_LEVEL = 'debug';
+      vi.stubEnv('LOG_LEVEL', 'debug');
       const logger = await getLogger();
       logger.debug('test', 'dbg');
       logger.info('test', 'inf');
@@ -100,7 +98,7 @@ describe('logger', () => {
 
   describe('production mode (JSON output)', () => {
     it('should output JSON in production', async () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       const logger = await getLogger();
       logger.info('api', 'request handled', { status: 200 });
       expect(logSpy).toHaveBeenCalledTimes(1);
@@ -114,7 +112,7 @@ describe('logger', () => {
     });
 
     it('should output JSON for errors in production', async () => {
-      process.env.NODE_ENV = 'production';
+      vi.stubEnv('NODE_ENV', 'production');
       const logger = await getLogger();
       logger.error('db', 'connection failed', { code: 'ECONNREFUSED' });
       expect(errorSpy).toHaveBeenCalledTimes(1);
@@ -128,7 +126,7 @@ describe('logger', () => {
 
   describe('development mode (pretty output)', () => {
     it('should output pretty format in dev', async () => {
-      process.env.NODE_ENV = 'development';
+      vi.stubEnv('NODE_ENV', 'development');
       const logger = await getLogger();
       logger.info('api', 'request handled', { status: 200 });
       expect(logSpy).toHaveBeenCalledTimes(1);
@@ -137,7 +135,7 @@ describe('logger', () => {
     });
 
     it('should output pretty format for warnings in dev', async () => {
-      process.env.NODE_ENV = 'development';
+      vi.stubEnv('NODE_ENV', 'development');
       const logger = await getLogger();
       logger.warn('cache', 'miss');
       expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -145,7 +143,7 @@ describe('logger', () => {
     });
 
     it('should pass empty string when no context provided in dev', async () => {
-      process.env.NODE_ENV = 'development';
+      vi.stubEnv('NODE_ENV', 'development');
       const logger = await getLogger();
       logger.error('test', 'oops');
       expect(errorSpy).toHaveBeenCalledTimes(1);

@@ -9,7 +9,7 @@ const currentLevel = (): LogLevel => {
 
 function log(level: LogLevel, module: string, message: string, context?: Record<string, unknown>): void {
   if (LOG_LEVELS[level] < LOG_LEVELS[currentLevel()]) return;
-  const entry = { timestamp: new Date().toISOString(), level, module, message, ...context };
+  const entry = { ...context, timestamp: new Date().toISOString(), level, module, message };
   const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   if (process.env.NODE_ENV === 'production') {
     fn(JSON.stringify(entry));
