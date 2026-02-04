@@ -13,6 +13,7 @@ import {
   transformTransactions,
   createSnapshot,
 } from "@/lib/simplefin";
+import { logger } from "@/lib/logger";
 
 /**
  * Connect a SimpleFIN account using a setup token
@@ -29,8 +30,8 @@ export async function connectSimpleFIN(setupToken: string) {
     let accessUrl: string;
     try {
       accessUrl = await claimSetupToken(setupToken);
-    } catch (claimError) {
-      console.error("SimpleFIN claim error:", claimError);
+    } catch (claimError: unknown) {
+      logger.error('simplefin', 'SimpleFIN claim error', { error: claimError instanceof Error ? claimError.message : String(claimError) });
       const message = claimError instanceof Error ? claimError.message : "Unknown error";
       return { error: `Failed to claim token: ${message}` };
     }
@@ -74,8 +75,8 @@ export async function connectSimpleFIN(setupToken: string) {
 
     revalidatePath("/dashboard");
     return { success: true, accountCount: syncResult.accountCount };
-  } catch (error) {
-    console.error("SimpleFIN connection error:", error);
+  } catch (error: unknown) {
+    logger.error('simplefin', 'SimpleFIN connection error', { error: error instanceof Error ? error.message : String(error) });
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Failed to connect SimpleFIN: ${message}` };
   }
@@ -119,14 +120,14 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     let accountSet;
     try {
       accountSet = await fetchAccounts({ accessUrl }, { startDate });
-    } catch (fetchError) {
-      console.error("SimpleFIN fetch error:", fetchError);
+    } catch (fetchError: unknown) {
+      logger.error('simplefin', 'SimpleFIN fetch error', { error: fetchError instanceof Error ? fetchError.message : String(fetchError) });
       const message = fetchError instanceof Error ? fetchError.message : "Unknown error";
       return { error: `Failed to fetch accounts: ${message}` };
     }
 
     if (accountSet.errors.length > 0) {
-      console.warn("SimpleFIN returned errors:", accountSet.errors);
+      logger.warn('simplefin', 'SimpleFIN returned errors', { errors: accountSet.errors });
     }
 
     // Transform accounts to our format
@@ -259,8 +260,8 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
 
     revalidatePath("/dashboard");
     return { success: true, accountCount: transformedAccounts.length };
-  } catch (error) {
-    console.error("SimpleFIN sync error:", error);
+  } catch (error: unknown) {
+    logger.error('simplefin', 'SimpleFIN sync error', { error: error instanceof Error ? error.message : String(error) });
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Failed to sync accounts: ${message}` };
   }

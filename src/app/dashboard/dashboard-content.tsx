@@ -17,6 +17,7 @@ import { getSolanaWallets } from "@/app/actions/solana";
 import { signout } from "@/lib/auth/actions";
 import type { Account } from "@/lib/db/schema";
 import { calculate24hChange, type ChartDataPoint } from "@/lib/portfolio";
+import { logger } from "@/lib/logger";
 
 interface PortfolioData {
   totalValueUsd: number;
@@ -74,8 +75,8 @@ export function DashboardContent() {
         ...(solanaResult.accounts || []),
       ];
       setAccounts(allAccounts);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+    } catch (error: unknown) {
+      logger.error('DashboardContent', 'Error fetching dashboard data', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       setIsLoading(false);
     }
@@ -126,8 +127,8 @@ export function DashboardContent() {
           ...(solanaResult.accounts || []),
         ];
         setAccounts(allAccounts);
-      } catch (error) {
-        console.error("Sync error:", error);
+      } catch (error: unknown) {
+        logger.error('DashboardContent', 'Sync error', { error: error instanceof Error ? error.message : String(error) });
       }
     });
   };
@@ -154,8 +155,8 @@ export function DashboardContent() {
           ...(solanaResult.accounts || []),
         ];
         setAccounts(allAccounts);
-      } catch (error) {
-        console.error("Error refreshing accounts:", error);
+      } catch (error: unknown) {
+        logger.error('DashboardContent', 'Error refreshing accounts', { error: error instanceof Error ? error.message : String(error) });
       }
     });
   };

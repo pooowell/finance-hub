@@ -12,6 +12,7 @@ import {
   transformWalletToAccount,
   createWalletSnapshot,
 } from "@/lib/solana";
+import { logger } from "@/lib/logger";
 
 /**
  * Connect a Solana wallet by address
@@ -85,8 +86,8 @@ export async function connectSolanaWallet(walletAddress: string) {
       totalValueUsd: walletData.totalValueUsd,
       tokenCount: walletData.tokens.length,
     };
-  } catch (error) {
-    console.error("Solana wallet connection error:", error);
+  } catch (error: unknown) {
+    logger.error('solana', 'Solana wallet connection error', { error: error instanceof Error ? error.message : String(error) });
     return { error: "Failed to fetch wallet data" };
   }
 }
@@ -167,15 +168,15 @@ export async function syncSolanaWallets() {
         }
 
         syncedCount++;
-      } catch (error) {
-        console.error(`Error syncing wallet ${account.externalId}:`, error);
+      } catch (error: unknown) {
+        logger.error('solana', 'Error syncing wallet', { walletId: account.externalId, error: error instanceof Error ? error.message : String(error) });
       }
     }
 
     revalidatePath("/dashboard");
     return { success: true, synced: syncedCount };
-  } catch (error) {
-    console.error("Solana sync error:", error);
+  } catch (error: unknown) {
+    logger.error('solana', 'Solana sync error', { error: error instanceof Error ? error.message : String(error) });
     return { error: "Failed to sync wallets" };
   }
 }

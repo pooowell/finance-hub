@@ -26,6 +26,7 @@ import {
   type TopSpender,
 } from "@/app/actions/transactions";
 import type { TransactionLabel } from "@/types/database";
+import { logger } from "@/lib/logger";
 
 type TimePeriod = "1d" | "1w" | "1m" | "1y";
 type ViewMode = "overview" | "spending" | "income";
@@ -313,8 +314,8 @@ export function TransactionsTab() {
       const result = await getSpendingSummaries();
       setSummaries(result.summaries);
       setLabels(result.labels);
-    } catch (error) {
-      console.error("Error fetching summaries:", error);
+    } catch (error: unknown) {
+      logger.error('TransactionsTab', 'Error fetching summaries', { error: error instanceof Error ? error.message : String(error) });
     }
   };
 
@@ -327,8 +328,8 @@ export function TransactionsTab() {
       setTransactions(result.transactions);
       setTopSpending(result.topSpending);
       setTopIncome(result.topIncome);
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
+    } catch (error: unknown) {
+      logger.error('TransactionsTab', 'Error fetching transactions', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       setIsLoading(false);
     }

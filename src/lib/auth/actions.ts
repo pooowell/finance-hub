@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from "./password";
 import { db, users } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { signinLimiter, signupLimiter } from "./rate-limit";
+import { logger } from "@/lib/logger";
 
 interface AuthResult {
   error?: string;
@@ -66,8 +67,8 @@ export async function signup(
       sessionCookie.value,
       sessionCookie.attributes
     );
-  } catch (e) {
-    console.error("Signup error:", e);
+  } catch (error: unknown) {
+    logger.error('auth', 'Signup error', { error: error instanceof Error ? error.message : String(error) });
     return { error: "An error occurred during signup" };
   }
 
@@ -117,8 +118,8 @@ export async function signin(
       sessionCookie.value,
       sessionCookie.attributes
     );
-  } catch (e) {
-    console.error("Signin error:", e);
+  } catch (error: unknown) {
+    logger.error('auth', 'Signin error', { error: error instanceof Error ? error.message : String(error) });
     return { error: "An error occurred during signin" };
   }
 
