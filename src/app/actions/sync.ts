@@ -167,8 +167,8 @@ export async function getPortfolioHistory(options?: {
     return [];
   }
 
-  // Aggregate snapshots by timestamp
-  // Group by time bucket based on interval
+  // Aggregate snapshots by timestamp, carrying forward last-known values
+  // per account so that accounts missing from a bucket still contribute
   const bucketMs = {
     "1h": 60 * 60 * 1000,
     "1d": 24 * 60 * 60 * 1000,
@@ -176,22 +176,29 @@ export async function getPortfolioHistory(options?: {
     "1m": 30 * 24 * 60 * 60 * 1000,
   }[options?.interval || "1d"];
 
-  const buckets = new Map<number, { total: number; count: number }>();
+  // Track the last-known valueUsd per account as we iterate (ordered asc)
+  const lastKnownPerAccount = new Map<string, number>();
+  const bucketTotals = new Map<number, number>();
 
   for (const snapshot of snapshotList) {
     const ts = new Date(snapshot.timestamp).getTime();
     const bucketKey = Math.floor(ts / bucketMs) * bucketMs;
 
-    const existing = buckets.get(bucketKey) || { total: 0, count: 0 };
-    existing.total += snapshot.valueUsd;
-    existing.count += 1;
-    buckets.set(bucketKey, existing);
+    // Update this account's latest value
+    lastKnownPerAccount.set(snapshot.accountId, snapshot.valueUsd ?? 0);
+
+    // Recompute the total across ALL accounts' last-known values
+    let total = 0;
+    for (const value of lastKnownPerAccount.values()) {
+      total += value;
+    }
+    bucketTotals.set(bucketKey, total);
   }
 
   // Convert to array format
-  const history = Array.from(buckets.entries())
+  const history = Array.from(bucketTotals.entries())
     .sort(([a], [b]) => a - b)
-    .map(([timestamp, { total }]) => ({
+    .map(([timestamp, total]) => ({
       timestamp: new Date(timestamp).toISOString(),
       value: total,
     }));
