@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 const getDatabasePath = () => {
   const dbPath = env.DATABASE_PATH;
@@ -19,7 +20,7 @@ const getDatabasePath = () => {
 
 const migrate = () => {
   const dbPath = getDatabasePath();
-  console.log(`Migrating database at: ${dbPath}`);
+  logger.info("migrate", `Migrating database at: ${dbPath}`);
 
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
@@ -133,7 +134,7 @@ const migrate = () => {
     CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   `);
 
-  console.log("Migration completed successfully!");
+  logger.info("migrate", "Migration completed successfully!");
   sqlite.close();
 };
 
