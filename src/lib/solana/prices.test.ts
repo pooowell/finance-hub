@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock fetchWithRetry before importing prices module
 vi.mock("@/lib/utils/fetch-retry", () => ({
@@ -20,6 +20,10 @@ function jsonResponse(body: object, status = 200) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("getJupiterPrices", () => {
