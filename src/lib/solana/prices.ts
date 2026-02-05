@@ -5,6 +5,7 @@
 
 import type { JupiterPriceResponse } from "@/types/solana";
 import { SOL_MINT } from "@/types/solana";
+import { fetchWithRetry } from "@/lib/utils/fetch-retry";
 
 const JUPITER_PRICE_API = "https://price.jup.ag/v6/price";
 const COINGECKO_API = "https://api.coingecko.com/api/v3";
@@ -20,9 +21,12 @@ export async function getJupiterPrices(
 
   try {
     const ids = mintAddresses.join(",");
-    const response = await fetch(`${JUPITER_PRICE_API}?ids=${ids}`, {
-      next: { revalidate: 60 }, // Cache for 1 minute
-    });
+    const url = `${JUPITER_PRICE_API}?ids=${ids}`;
+    const response = await fetchWithRetry(
+      url,
+      { next: { revalidate: 60 } } as RequestInit,
+      { label: "Jupiter Price API" }
+    );
 
     if (!response.ok) {
       console.error("Jupiter API error:", response.statusText);
@@ -50,11 +54,11 @@ export async function getJupiterPrices(
  */
 export async function getSolPrice(): Promise<number | null> {
   try {
-    const response = await fetch(
-      `${COINGECKO_API}/simple/price?ids=solana&vs_currencies=usd`,
-      {
-        next: { revalidate: 60 }, // Cache for 1 minute
-      }
+    const url = `${COINGECKO_API}/simple/price?ids=solana&vs_currencies=usd`;
+    const response = await fetchWithRetry(
+      url,
+      { next: { revalidate: 60 } } as RequestInit,
+      { label: "CoinGecko SOL Price" }
     );
 
     if (!response.ok) {
