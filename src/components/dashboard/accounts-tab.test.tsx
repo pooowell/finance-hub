@@ -6,7 +6,7 @@ import type { Account } from "@/types/database";
 
 // Mock the server action
 vi.mock("@/app/actions/accounts", () => ({
-  updateAccount: vi.fn(() => Promise.resolve()),
+  updateAccount: vi.fn(() => Promise.resolve({ success: true })),
 }));
 
 function makeAccount(overrides: Partial<Account> = {}): Account {
