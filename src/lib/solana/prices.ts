@@ -5,6 +5,7 @@
 
 import type { JupiterPriceResponse } from "@/types/solana";
 import { SOL_MINT } from "@/types/solana";
+import { logger } from "@/lib/logger";
 
 const JUPITER_PRICE_API = "https://price.jup.ag/v6/price";
 const COINGECKO_API = "https://api.coingecko.com/api/v3";
@@ -25,7 +26,7 @@ export async function getJupiterPrices(
     });
 
     if (!response.ok) {
-      console.error("Jupiter API error:", response.statusText);
+      logger.error("prices", "Jupiter API error", { status: response.status, statusText: response.statusText });
       return {};
     }
 
@@ -40,7 +41,7 @@ export async function getJupiterPrices(
 
     return prices;
   } catch (error) {
-    console.error("Failed to fetch Jupiter prices:", error);
+    logger.error("prices", "Failed to fetch Jupiter prices", { error: error instanceof Error ? error.message : String(error) });
     return {};
   }
 }
@@ -58,14 +59,14 @@ export async function getSolPrice(): Promise<number | null> {
     );
 
     if (!response.ok) {
-      console.error("CoinGecko API error:", response.statusText);
+      logger.error("prices", "CoinGecko API error", { status: response.status, statusText: response.statusText });
       return null;
     }
 
     const data = await response.json();
     return data.solana?.usd ?? null;
   } catch (error) {
-    console.error("Failed to fetch SOL price:", error);
+    logger.error("prices", "Failed to fetch SOL price", { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
