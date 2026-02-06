@@ -91,7 +91,7 @@ export function PortfolioChart({ data, isLoading }: PortfolioChartProps) {
 
   if (isLoading) {
     return (
-      <div className="w-full h-[300px] flex items-center justify-center bg-card rounded-lg border border-border">
+      <div className="w-full h-[250px] sm:h-[300px] flex items-center justify-center bg-card rounded-lg border border-border">
         <div className="animate-pulse text-muted-foreground">Loading chart...</div>
       </div>
     );
@@ -120,7 +120,7 @@ export function PortfolioChart({ data, isLoading }: PortfolioChartProps) {
       </div>
 
       {/* Chart */}
-      <div className="w-full h-[300px]">
+      <div className="w-full h-[250px] sm:h-[300px]">
         {chartData.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             No data available. Connect accounts to see your portfolio history.
@@ -156,7 +156,7 @@ export function PortfolioChart({ data, isLoading }: PortfolioChartProps) {
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
-                width={80}
+                width={60}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area

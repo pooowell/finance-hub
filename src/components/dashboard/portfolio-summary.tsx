@@ -51,11 +51,11 @@ export function PortfolioSummary({
   const isPositive = change24h >= 0;
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
+    <div className="bg-card rounded-lg border border-border p-4 sm:p-6">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-muted-foreground mb-1">Total Portfolio Value</p>
-          <h2 className="text-4xl font-bold tracking-tight">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
             {formatCurrency(totalValue)}
           </h2>
 

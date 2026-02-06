@@ -100,10 +100,10 @@ export function RecentTransactions() {
               key={tx.id}
               className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div
                   className={cn(
-                    "p-2 rounded-full",
+                    "p-2 rounded-full flex-shrink-0",
                     isCredit ? "bg-green-500/10" : "bg-red-500/10"
                   )}
                 >
@@ -113,8 +113,8 @@ export function RecentTransactions() {
                     <ArrowUpRight className="h-4 w-4 text-red-500" />
                   )}
                 </div>
-                <div>
-                  <p className="font-medium text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm truncate max-w-[180px] sm:max-w-none">
                     {tx.payee || tx.description}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -124,7 +124,7 @@ export function RecentTransactions() {
               </div>
               <p
                 className={cn(
-                  "font-semibold",
+                  "font-semibold text-sm whitespace-nowrap ml-2",
                   isCredit ? "text-green-500" : "text-foreground"
                 )}
               >

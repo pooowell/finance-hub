@@ -48,8 +48,8 @@ export default async function DashboardPage() {
   const { user } = await validateRequest();
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
+    <main className="container mx-auto px-3 py-4 sm:px-4 sm:py-8 max-w-4xl">
+      <h1 className="text-3xl font-bold mb-4 sm:mb-8">Dashboard</h1>
       {user ? (
         <Suspense fallback={<DashboardSkeleton />}>
           <DashboardContent />
