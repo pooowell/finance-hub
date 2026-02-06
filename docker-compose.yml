@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    image: finance-hub:latest
+    container_name: finance-hub
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_PATH=./data/finance-hub.db
+    restart: unless-stopped
