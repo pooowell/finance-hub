@@ -46,11 +46,11 @@ function formatCurrency(value: number | null): string {
 function getAccountIcon(provider: string) {
   switch (provider) {
     case "Solana":
-      return <Wallet className="h-5 w-5" />;
+      return <Wallet className="h-4 w-4" />;
     case "SimpleFIN":
-      return <Building2 className="h-5 w-5" />;
+      return <Building2 className="h-4 w-4" />;
     default:
-      return <Wallet className="h-5 w-5" />;
+      return <Wallet className="h-4 w-4" />;
   }
 }
 
@@ -91,27 +91,31 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-between p-4 hover:bg-muted/50 transition-colors",
+        "p-3 sm:p-4 hover:bg-muted/50 transition-colors",
         account.isHidden && "opacity-60"
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-muted">
-          {getAccountIcon(account.provider)}
+      {/* Top row: icon + name + balance */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="p-1.5 rounded-full bg-muted shrink-0">
+            {getAccountIcon(account.provider)}
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm truncate">{account.name}</p>
+            <p className="text-xs text-muted-foreground">{account.provider}</p>
+          </div>
         </div>
-        <div>
-          <p className="font-medium">{account.name}</p>
-          <p className="text-sm text-muted-foreground">{account.provider}</p>
-        </div>
+        <p className="font-semibold text-sm whitespace-nowrap">{formatCurrency(account.balanceUsd)}</p>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Category dropdown */}
+      {/* Bottom row: controls */}
+      <div className="flex items-center gap-2 mt-2 ml-8">
         <select
           value={account.category ?? ""}
           onChange={handleCategoryChange}
           disabled={isPending}
-          className="px-2 py-1 text-sm rounded border border-input bg-background"
+          className="px-1.5 py-0.5 text-xs rounded border border-input bg-background flex-shrink-0"
         >
           {CATEGORY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -120,31 +124,25 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
           ))}
         </select>
 
-        {/* Include in net worth toggle */}
         <button
           onClick={handleToggleNetWorth}
           disabled={isPending}
           className={cn(
-            "p-2 rounded-lg transition-colors",
+            "p-1 rounded transition-colors",
             account.includeInNetWorth
               ? "bg-green-500/10 text-green-500"
               : "bg-muted text-muted-foreground"
           )}
-          title={
-            account.includeInNetWorth
-              ? "Included in net worth"
-              : "Excluded from net worth"
-          }
+          title={account.includeInNetWorth ? "Included in net worth" : "Excluded from net worth"}
         >
-          <DollarSign className="h-4 w-4" />
+          <DollarSign className="h-3.5 w-3.5" />
         </button>
 
-        {/* Hide toggle */}
         <button
           onClick={handleToggleHidden}
           disabled={isPending}
           className={cn(
-            "p-2 rounded-lg transition-colors",
+            "p-1 rounded transition-colors",
             account.isHidden
               ? "bg-muted text-muted-foreground"
               : "bg-primary/10 text-primary"
@@ -152,16 +150,11 @@ function AccountRow({ account, onUpdate }: AccountRowProps) {
           title={account.isHidden ? "Show account" : "Hide account"}
         >
           {account.isHidden ? (
-            <EyeOff className="h-4 w-4" />
+            <EyeOff className="h-3.5 w-3.5" />
           ) : (
-            <Eye className="h-4 w-4" />
+            <Eye className="h-3.5 w-3.5" />
           )}
         </button>
-
-        {/* Balance */}
-        <div className="text-right min-w-[100px]">
-          <p className="font-semibold">{formatCurrency(account.balanceUsd)}</p>
-        </div>
       </div>
     </div>
   );
@@ -173,17 +166,18 @@ export function AccountsTab({
   onShowHiddenChange,
   onAccountUpdate,
 }: AccountsTabProps) {
-  // Filter accounts based on showHidden
   const visibleAccounts = showHidden
     ? accounts
     : accounts.filter((a) => !a.isHidden);
 
-  // Group accounts by category
   const groupedAccounts = CATEGORIES.map((cat) => ({
     ...cat,
     accounts: visibleAccounts.filter((a) =>
       cat.id === null ? !a.category : a.category === cat.id
     ),
+    total: visibleAccounts
+      .filter((a) => (cat.id === null ? !a.category : a.category === cat.id))
+      .reduce((sum, a) => sum + (a.balanceUsd || 0), 0),
   })).filter((group) => group.accounts.length > 0);
 
   const hiddenCount = accounts.filter((a) => a.isHidden).length;
@@ -194,7 +188,7 @@ export function AccountsTab({
         <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">No accounts connected</h3>
         <p className="text-muted-foreground">
-          Connect your financial accounts to start tracking your portfolio.
+          Connect your financial accounts in Settings to start tracking.
         </p>
       </div>
     );
@@ -202,7 +196,6 @@ export function AccountsTab({
 
   return (
     <div className="space-y-4">
-      {/* Show hidden toggle */}
       {hiddenCount > 0 && (
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -213,20 +206,22 @@ export function AccountsTab({
               className="rounded border-input"
             />
             <span className="text-sm text-muted-foreground">
-              Show hidden accounts ({hiddenCount})
+              Show hidden ({hiddenCount})
             </span>
           </label>
         </div>
       )}
 
-      {/* Grouped accounts */}
       {groupedAccounts.map((group) => (
         <div
           key={group.id ?? "uncategorized"}
           className="bg-card rounded-lg border border-border"
         >
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">{group.label}</h3>
+          <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between">
+            <h3 className="font-semibold text-sm">{group.label}</h3>
+            <span className="text-sm text-muted-foreground font-medium">
+              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(group.total)}
+            </span>
           </div>
           <div className="divide-y divide-border">
             {group.accounts.map((account) => (

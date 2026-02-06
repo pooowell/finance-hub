@@ -1,6 +1,6 @@
 "use client";
 
-import { PortfolioChart, PortfolioSummary, ConnectAccount } from "@/components/dashboard";
+import { PortfolioChart, PortfolioSummary } from "@/components/dashboard";
 import { RecentTransactions } from "./recent-transactions";
 
 interface ChartDataPoint {
@@ -29,11 +29,9 @@ export function DashboardTab({
   chartData,
   isSyncing,
   onSync,
-  onAccountConnect,
 }: DashboardTabProps) {
   return (
     <div className="space-y-6">
-      {/* Portfolio Summary */}
       <PortfolioSummary
         totalValue={portfolioData.totalValueUsd}
         change24h={portfolioData.change24h}
@@ -43,14 +41,7 @@ export function DashboardTab({
         onSync={onSync}
         isSyncing={isSyncing}
       />
-
-      {/* Connect Account */}
-      <ConnectAccount onSuccess={onAccountConnect} />
-
-      {/* Portfolio Chart */}
       <PortfolioChart data={chartData} isLoading={isSyncing} />
-
-      {/* Recent Transactions */}
       <RecentTransactions />
     </div>
   );

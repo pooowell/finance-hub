@@ -200,7 +200,7 @@ export function DashboardContent() {
 
       {activeTab === "transactions" && <TransactionsTab />}
 
-      {activeTab === "settings" && <SettingsTab />}
+      {activeTab === "settings" && <SettingsTab onAccountConnect={fetchData} />}
     </div>
   );
 }
