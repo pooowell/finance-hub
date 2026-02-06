@@ -5,6 +5,10 @@ import crypto from "crypto";
 // Single hardcoded user ID - all data belongs to this "user"
 export const DEFAULT_USER_ID = "default";
 
+// Internal bypass for API routes that handle their own auth
+let _internalBypass = false;
+export function setInternalBypass(value: boolean) { _internalBypass = value; }
+
 // Session cookie name and secret for signing
 const SESSION_COOKIE = "finance_hub_session";
 const getSecret = () => process.env.AUTH_PASSWORD || "changeme";
@@ -43,6 +47,11 @@ export function verifySessionToken(token: string): boolean {
 // Validate the current request
 export const validateRequest = cache(
   async (): Promise<{ user: { id: string } | null }> => {
+    // Allow internal API routes to bypass cookie check
+    if (_internalBypass) {
+      return { user: { id: DEFAULT_USER_ID } };
+    }
+
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
     
@@ -60,7 +69,7 @@ export async function setSessionCookie(): Promise<void> {
   const token = createSessionToken();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: false,
     sameSite: "lax",
     maxAge: 30 * 24 * 60 * 60, // 30 days
     path: "/",
@@ -72,7 +81,7 @@ export async function clearSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: false,
     sameSite: "lax",
     maxAge: 0,
     path: "/",
