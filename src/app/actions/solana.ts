@@ -1,9 +1,8 @@
 "use server";
 
 import { eq, and } from "drizzle-orm";
-import { generateIdFromEntropySize } from "lucia";
 import { revalidatePath } from "next/cache";
-import { validateRequest } from "@/lib/auth";
+import { validateRequest, DEFAULT_USER_ID } from "@/lib/auth";
 import { db, accounts, snapshots } from "@/lib/db";
 import type { Account } from "@/lib/db/schema";
 import {
@@ -12,7 +11,16 @@ import {
   transformWalletToAccount,
   createWalletSnapshot,
 } from "@/lib/solana";
-import { logger } from "@/lib/logger";
+
+// Generate a random ID (replaces lucia's generateIdFromEntropySize)
+function generateId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 16; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
 
 /**
  * Connect a Solana wallet by address
@@ -36,7 +44,7 @@ export async function connectSolanaWallet(walletAddress: string) {
       .from(accounts)
       .where(
         and(
-          eq(accounts.userId, user.id),
+          eq(accounts.userId, DEFAULT_USER_ID),
           eq(accounts.externalId, walletAddress),
           eq(accounts.provider, "Solana")
         )
@@ -51,14 +59,14 @@ export async function connectSolanaWallet(walletAddress: string) {
     const walletData = await getWalletData(walletAddress);
 
     // Transform to account format
-    const account = transformWalletToAccount(walletData, user.id);
+    const account = transformWalletToAccount(walletData, DEFAULT_USER_ID);
 
     // Insert account
-    const accountId = generateIdFromEntropySize(10);
+    const accountId = generateId();
     db.insert(accounts)
       .values({
         id: accountId,
-        userId: user.id,
+        userId: DEFAULT_USER_ID,
         provider: account.provider,
         name: account.name,
         type: account.type,
@@ -73,7 +81,7 @@ export async function connectSolanaWallet(walletAddress: string) {
     const snapshot = createWalletSnapshot(accountId, walletData.totalValueUsd);
     db.insert(snapshots)
       .values({
-        id: generateIdFromEntropySize(10),
+        id: generateId(),
         accountId: snapshot.account_id,
         timestamp: snapshot.timestamp,
         valueUsd: snapshot.value_usd,
@@ -86,8 +94,8 @@ export async function connectSolanaWallet(walletAddress: string) {
       totalValueUsd: walletData.totalValueUsd,
       tokenCount: walletData.tokens.length,
     };
-  } catch (error: unknown) {
-    logger.error('solana', 'Solana wallet connection error', { error: error instanceof Error ? error.message : String(error) });
+  } catch (error) {
+    console.error("Solana wallet connection error:", error);
     return { error: "Failed to fetch wallet data" };
   }
 }
@@ -103,7 +111,7 @@ export async function syncSolanaWallets() {
   }
 
   try {
-    // Get all Solana accounts for user
+    // Get all Solana accounts
     const solanaAccounts = db
       .select({
         id: accounts.id,
@@ -113,7 +121,7 @@ export async function syncSolanaWallets() {
       .from(accounts)
       .where(
         and(
-          eq(accounts.userId, user.id),
+          eq(accounts.userId, DEFAULT_USER_ID),
           eq(accounts.provider, "Solana")
         )
       )
@@ -159,7 +167,7 @@ export async function syncSolanaWallets() {
           const snapshot = createWalletSnapshot(account.id, walletData.totalValueUsd);
           db.insert(snapshots)
             .values({
-              id: generateIdFromEntropySize(10),
+              id: generateId(),
               accountId: snapshot.account_id,
               timestamp: snapshot.timestamp,
               valueUsd: snapshot.value_usd,
@@ -168,15 +176,15 @@ export async function syncSolanaWallets() {
         }
 
         syncedCount++;
-      } catch (error: unknown) {
-        logger.error('solana', 'Error syncing wallet', { walletId: account.externalId, error: error instanceof Error ? error.message : String(error) });
+      } catch (error) {
+        console.error(`Error syncing wallet ${account.externalId}:`, error);
       }
     }
 
     revalidatePath("/dashboard");
     return { success: true, synced: syncedCount };
-  } catch (error: unknown) {
-    logger.error('solana', 'Solana sync error', { error: error instanceof Error ? error.message : String(error) });
+  } catch (error) {
+    console.error("Solana sync error:", error);
     return { error: "Failed to sync wallets" };
   }
 }
@@ -191,13 +199,13 @@ export async function removeSolanaWallet(accountId: string) {
     return { error: "Unauthorized" };
   }
 
-  // Verify ownership and delete
+  // Delete the account
   const result = db
     .delete(accounts)
     .where(
       and(
         eq(accounts.id, accountId),
-        eq(accounts.userId, user.id),
+        eq(accounts.userId, DEFAULT_USER_ID),
         eq(accounts.provider, "Solana")
       )
     )
@@ -229,7 +237,7 @@ export async function getSolanaWallets(): Promise<{
     .from(accounts)
     .where(
       and(
-        eq(accounts.userId, user.id),
+        eq(accounts.userId, DEFAULT_USER_ID),
         eq(accounts.provider, "Solana")
       )
     )

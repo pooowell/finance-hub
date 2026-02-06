@@ -1,141 +1,49 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { generateIdFromEntropySize } from "lucia";
-import { lucia, validateRequest } from "./index";
-import { hashPassword, verifyPassword } from "./password";
-import { db, users } from "@/lib/db";
-import { eq } from "drizzle-orm";
-import { signinLimiter, signupLimiter } from "./rate-limit";
-import { logger } from "@/lib/logger";
+import { setSessionCookie, clearSessionCookie } from "./index";
+import { signinLimiter } from "./rate-limit";
 
 interface AuthResult {
   error?: string;
   success?: string;
 }
 
-export async function signup(
-  email: string,
-  password: string
-): Promise<AuthResult> {
+export async function login(password: string): Promise<AuthResult> {
   // Validate input
-  if (!email || !email.includes("@")) {
-    return { error: "Invalid email" };
-  }
-  if (!password || password.length < 6) {
-    return { error: "Password must be at least 6 characters" };
+  if (!password) {
+    return { error: "Please enter the password" };
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
-
-  // Rate limit
-  const signupLimit = signupLimiter.checkLimit(normalizedEmail, 10, 60 * 60 * 1000);
-  if (!signupLimit.allowed) {
+  // Rate limit by IP (use a fixed key since we don't have users)
+  const limit = signinLimiter.checkLimit("global", 10, 15 * 60 * 1000);
+  if (!limit.allowed) {
     return { error: "Too many attempts. Please try again later." };
   }
 
-  // Check if user already exists
-  const existingUser = db
-    .select()
-    .from(users)
-    .where(eq(users.email, normalizedEmail))
-    .get();
-
-  if (existingUser) {
-    return { error: "Email already in use" };
+  // Check password against env var
+  const correctPassword = process.env.AUTH_PASSWORD;
+  if (!correctPassword) {
+    console.error("AUTH_PASSWORD environment variable not set");
+    return { error: "Server configuration error" };
   }
 
-  // Create user
-  const userId = generateIdFromEntropySize(10);
-  const hashedPassword = await hashPassword(password);
+  if (password !== correctPassword) {
+    return { error: "Invalid password" };
+  }
 
+  // Set session cookie
   try {
-    db.insert(users)
-      .values({
-        id: userId,
-        email: normalizedEmail,
-        hashedPassword,
-      })
-      .run();
-
-    // Create session
-    const session = await lucia.createSession(userId, {});
-    const sessionCookie = lucia.createSessionCookie(session.id);
-    (await cookies()).set(
-      sessionCookie.name,
-      sessionCookie.value,
-      sessionCookie.attributes
-    );
-  } catch (error: unknown) {
-    logger.error('auth', 'Signup error', { error: error instanceof Error ? error.message : String(error) });
-    return { error: "An error occurred during signup" };
-  }
-
-  return { success: "Account created successfully" };
-}
-
-export async function signin(
-  email: string,
-  password: string
-): Promise<AuthResult> {
-  // Validate input
-  if (!email || !password) {
-    return { error: "Please enter email and password" };
-  }
-
-  const normalizedEmail = email.toLowerCase().trim();
-
-  // Rate limit
-  const signinLimit = signinLimiter.checkLimit(normalizedEmail, 5, 15 * 60 * 1000);
-  if (!signinLimit.allowed) {
-    return { error: "Too many attempts. Please try again later." };
-  }
-
-  // Find user
-  const user = db
-    .select()
-    .from(users)
-    .where(eq(users.email, normalizedEmail))
-    .get();
-
-  if (!user) {
-    return { error: "Invalid email or password" };
-  }
-
-  // Verify password
-  const validPassword = await verifyPassword(user.hashedPassword, password);
-  if (!validPassword) {
-    return { error: "Invalid email or password" };
-  }
-
-  // Create session
-  try {
-    const session = await lucia.createSession(user.id, {});
-    const sessionCookie = lucia.createSessionCookie(session.id);
-    (await cookies()).set(
-      sessionCookie.name,
-      sessionCookie.value,
-      sessionCookie.attributes
-    );
-  } catch (error: unknown) {
-    logger.error('auth', 'Signin error', { error: error instanceof Error ? error.message : String(error) });
-    return { error: "An error occurred during signin" };
+    await setSessionCookie();
+  } catch (e) {
+    console.error("Login error:", e);
+    return { error: "An error occurred during login" };
   }
 
   return { success: "Signed in successfully" };
 }
 
 export async function signout(): Promise<void> {
-  const { session } = await validateRequest();
-  if (session) {
-    await lucia.invalidateSession(session.id);
-    const sessionCookie = lucia.createBlankSessionCookie();
-    (await cookies()).set(
-      sessionCookie.name,
-      sessionCookie.value,
-      sessionCookie.attributes
-    );
-  }
+  await clearSessionCookie();
   redirect("/dashboard");
 }

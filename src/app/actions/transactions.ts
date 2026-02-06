@@ -1,11 +1,20 @@
 "use server";
 
 import { eq, and, inArray, isNull, gte, desc } from "drizzle-orm";
-import { generateIdFromEntropySize } from "lucia";
 import { revalidatePath } from "next/cache";
-import { validateRequest } from "@/lib/auth";
+import { validateRequest, DEFAULT_USER_ID } from "@/lib/auth";
 import { db, accounts, transactions, transactionLabels, labelRules } from "@/lib/db";
 import type { Transaction, TransactionLabel, LabelRule } from "@/lib/db/schema";
+
+// Generate a random ID (replaces lucia's generateIdFromEntropySize)
+function generateId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 16; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
 
 export interface TransactionWithLabel extends Transaction {
   account_name: string;
@@ -62,11 +71,11 @@ export async function getSpendingSummaries(): Promise<{ summaries: SpendingSumma
     return { summaries: [], labels: [], error: "Unauthorized" };
   }
 
-  // Get user's account IDs
+  // Get all accounts
   const userAccounts = db
     .select({ id: accounts.id })
     .from(accounts)
-    .where(eq(accounts.userId, user.id))
+    .where(eq(accounts.userId, DEFAULT_USER_ID))
     .all();
 
   if (userAccounts.length === 0) {
@@ -79,7 +88,7 @@ export async function getSpendingSummaries(): Promise<{ summaries: SpendingSumma
   const labels = db
     .select()
     .from(transactionLabels)
-    .where(eq(transactionLabels.userId, user.id))
+    .where(eq(transactionLabels.userId, DEFAULT_USER_ID))
     .orderBy(transactionLabels.name)
     .all();
 
@@ -143,11 +152,11 @@ export async function getTransactionsForPeriod(
     return { transactions: [], topSpending: [], topIncome: [], error: "Unauthorized" };
   }
 
-  // Get user's accounts
+  // Get all accounts
   const userAccounts = db
     .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
-    .where(eq(accounts.userId, user.id))
+    .where(eq(accounts.userId, DEFAULT_USER_ID))
     .all();
 
   if (userAccounts.length === 0) {
@@ -161,7 +170,7 @@ export async function getTransactionsForPeriod(
   const labels = db
     .select()
     .from(transactionLabels)
-    .where(eq(transactionLabels.userId, user.id))
+    .where(eq(transactionLabels.userId, DEFAULT_USER_ID))
     .all();
 
   const labelMap = new Map(labels.map((l) => [l.id, l]));
@@ -235,14 +244,14 @@ export async function getLabelsWithRules(): Promise<{ labels: LabelWithRules[]; 
   const labels = db
     .select()
     .from(transactionLabels)
-    .where(eq(transactionLabels.userId, user.id))
+    .where(eq(transactionLabels.userId, DEFAULT_USER_ID))
     .orderBy(transactionLabels.name)
     .all();
 
   const rules = db
     .select()
     .from(labelRules)
-    .where(eq(labelRules.userId, user.id))
+    .where(eq(labelRules.userId, DEFAULT_USER_ID))
     .all();
 
   const rulesByLabel = new Map<string, LabelRule[]>();
@@ -277,11 +286,11 @@ export async function createLabel(
   const labelColor = color || LABEL_COLORS[Math.floor(Math.random() * LABEL_COLORS.length)];
 
   try {
-    const labelId = generateIdFromEntropySize(10);
+    const labelId = generateId();
     db.insert(transactionLabels)
       .values({
         id: labelId,
-        userId: user.id,
+        userId: DEFAULT_USER_ID,
         name,
         color: labelColor,
       })
@@ -316,7 +325,7 @@ export async function deleteLabel(labelId: string): Promise<{ success: boolean; 
     .where(
       and(
         eq(transactionLabels.id, labelId),
-        eq(transactionLabels.userId, user.id)
+        eq(transactionLabels.userId, DEFAULT_USER_ID)
       )
     )
     .run();
@@ -343,7 +352,7 @@ export async function labelTransaction(
     return { success: false, error: "Unauthorized" };
   }
 
-  // Get the transaction to verify ownership and get details for rule
+  // Get the transaction to verify it exists and get details for rule
   const transaction = db
     .select({
       id: transactions.id,
@@ -359,17 +368,6 @@ export async function labelTransaction(
     return { success: false, error: "Transaction not found" };
   }
 
-  // Verify user owns the account
-  const account = db
-    .select({ userId: accounts.userId })
-    .from(accounts)
-    .where(eq(accounts.id, transaction.accountId))
-    .get();
-
-  if (!account || account.userId !== user.id) {
-    return { success: false, error: "Transaction not found" };
-  }
-
   // Update the transaction label
   db.update(transactions)
     .set({ labelId })
@@ -382,8 +380,8 @@ export async function labelTransaction(
     if (matchPattern) {
       db.insert(labelRules)
         .values({
-          id: generateIdFromEntropySize(10),
-          userId: user.id,
+          id: generateId(),
+          userId: DEFAULT_USER_ID,
           labelId,
           matchField: transaction.payee ? "payee" : "description",
           matchPattern,
@@ -410,18 +408,18 @@ export async function applyLabelRules(): Promise<{ applied: number; error?: stri
   const rules = db
     .select()
     .from(labelRules)
-    .where(eq(labelRules.userId, user.id))
+    .where(eq(labelRules.userId, DEFAULT_USER_ID))
     .all();
 
   if (rules.length === 0) {
     return { applied: 0 };
   }
 
-  // Get user's account IDs
+  // Get all account IDs
   const userAccounts = db
     .select({ id: accounts.id })
     .from(accounts)
-    .where(eq(accounts.userId, user.id))
+    .where(eq(accounts.userId, DEFAULT_USER_ID))
     .all();
 
   if (userAccounts.length === 0) {
@@ -496,8 +494,8 @@ export async function createLabelRule(
   try {
     db.insert(labelRules)
       .values({
-        id: generateIdFromEntropySize(10),
-        userId: user.id,
+        id: generateId(),
+        userId: DEFAULT_USER_ID,
         labelId,
         matchField,
         matchPattern,
@@ -527,7 +525,7 @@ export async function deleteLabelRule(ruleId: string): Promise<{ success: boolea
     .where(
       and(
         eq(labelRules.id, ruleId),
-        eq(labelRules.userId, user.id)
+        eq(labelRules.userId, DEFAULT_USER_ID)
       )
     )
     .run();

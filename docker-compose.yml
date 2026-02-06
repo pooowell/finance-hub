@@ -9,4 +9,5 @@ services:
       - ./data:/app/data
     environment:
       - DATABASE_PATH=./data/finance-hub.db
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
     restart: unless-stopped

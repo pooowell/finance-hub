@@ -1,34 +1,80 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
-import type { Session, User } from "lucia";
-import { lucia } from "./lucia";
+import crypto from "crypto";
 
+// Single hardcoded user ID - all data belongs to this "user"
+export const DEFAULT_USER_ID = "default";
+
+// Session cookie name and secret for signing
+const SESSION_COOKIE = "finance_hub_session";
+const getSecret = () => process.env.AUTH_PASSWORD || "changeme";
+
+// Create a signed session token
+export function createSessionToken(): string {
+  const timestamp = Date.now().toString();
+  const hmac = crypto.createHmac("sha256", getSecret());
+  hmac.update(timestamp);
+  const signature = hmac.digest("hex");
+  return `${timestamp}.${signature}`;
+}
+
+// Verify a session token
+export function verifySessionToken(token: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+  
+  const [timestamp, signature] = parts;
+  
+  // Check if token is expired (30 days)
+  const age = Date.now() - parseInt(timestamp, 10);
+  if (age > 30 * 24 * 60 * 60 * 1000) return false;
+  
+  // Verify signature
+  const hmac = crypto.createHmac("sha256", getSecret());
+  hmac.update(timestamp);
+  const expectedSignature = hmac.digest("hex");
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expectedSignature, "hex")
+  );
+}
+
+// Validate the current request
 export const validateRequest = cache(
-  async (): Promise<{ user: User; session: Session } | { user: null; session: null }> => {
-    const sessionId = (await cookies()).get(lucia.sessionCookieName)?.value ?? null;
-    if (!sessionId) {
-      return { user: null, session: null };
+  async (): Promise<{ user: { id: string } | null }> => {
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
+    
+    if (!sessionToken || !verifySessionToken(sessionToken)) {
+      return { user: null };
     }
-
-    const result = await lucia.validateSession(sessionId);
-
-    try {
-      if (result.session && result.session.fresh) {
-        const sessionCookie = lucia.createSessionCookie(result.session.id);
-        (await cookies()).set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
-      }
-      if (!result.session) {
-        const sessionCookie = lucia.createBlankSessionCookie();
-        (await cookies()).set(sessionCookie.name, sessionCookie.value, sessionCookie.attributes);
-      }
-    } catch {
-      // Next.js throws when setting cookies in server components
-      // This is expected and can be ignored
-    }
-
-    return result;
+    
+    return { user: { id: DEFAULT_USER_ID } };
   }
 );
 
-export { lucia } from "./lucia";
-export { hashPassword, verifyPassword } from "./password";
+// Set session cookie
+export async function setSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  const token = createSessionToken();
+  cookieStore.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    path: "/",
+  });
+}
+
+// Clear session cookie
+export async function clearSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
+}

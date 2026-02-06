@@ -15,7 +15,7 @@ interface QueryChain {
   run: () => unknown;
 }
 
-const { dbQueue, mockDb, mockValidateRequest, mockGenerateId } = vi.hoisted(() => {
+const { dbQueue, mockDb, mockValidateRequest } = vi.hoisted(() => {
   const queue: Array<unknown> = [];
 
   function createChain(): QueryChain {
@@ -41,7 +41,6 @@ const { dbQueue, mockDb, mockValidateRequest, mockGenerateId } = vi.hoisted(() =
       },
     }),
     mockValidateRequest: vi.fn(),
-    mockGenerateId: vi.fn(() => "mock-generated-id"),
   };
 });
 
@@ -54,10 +53,7 @@ vi.mock("@/lib/db", async () => {
 
 vi.mock("@/lib/auth", () => ({
   validateRequest: mockValidateRequest,
-}));
-
-vi.mock("lucia", () => ({
-  generateIdFromEntropySize: mockGenerateId,
+  DEFAULT_USER_ID: "default",
 }));
 
 // --- Imports (after mocks) ---
@@ -74,7 +70,7 @@ import {
 } from "./transactions";
 
 // --- Test fixtures ---
-const mockUser = { id: "user-1", email: "test@example.com" };
+const mockUser = { id: "default" };
 
 // Freeze time for deterministic period-based assertions
 const now = new Date("2026-01-15T12:00:00Z");
@@ -83,12 +79,12 @@ const hoursAgo = (h: number) =>
 const daysAgo = (d: number) =>
   new Date(now.getTime() - d * 24 * 60 * 60 * 1000).toISOString();
 
-const recentDate = hoursAgo(2); // 2 hours ago  → within 1d
-const threeDaysAgo = daysAgo(3); // 3 days ago   → within 1w but not 1d
-const fifteenDaysAgo = daysAgo(15); // 15 days ago  → within 1m but not 1w
+const recentDate = hoursAgo(2); // 2 hours ago  -> within 1d
+const threeDaysAgo = daysAgo(3); // 3 days ago   -> within 1w but not 1d
+const fifteenDaysAgo = daysAgo(15); // 15 days ago  -> within 1m but not 1w
 
 function authed() {
-  mockValidateRequest.mockResolvedValue({ user: mockUser, session: {} });
+  mockValidateRequest.mockResolvedValue({ user: mockUser });
 }
 
 // ===================================================================
@@ -109,7 +105,7 @@ describe("transactions actions", () => {
   // ---------------------------------------------------------------
   describe("auth guards", () => {
     beforeEach(() => {
-      mockValidateRequest.mockResolvedValue({ user: null, session: null });
+      mockValidateRequest.mockResolvedValue({ user: null });
     });
 
     it("getSpendingSummaries returns error when unauthenticated", async () => {
@@ -179,19 +175,19 @@ describe("transactions actions", () => {
     beforeEach(authed);
 
     it("returns empty when user has no accounts", async () => {
-      dbQueue.push([]); // userAccounts → empty
+      dbQueue.push([]); // userAccounts -> empty
 
       const r = await getSpendingSummaries();
       expect(r).toEqual({ summaries: [], labels: [] });
     });
 
     it("returns correct spending / income / net for each period", async () => {
-      // DB call order: accounts → labels → allTransactions
+      // DB call order: accounts -> labels -> allTransactions
       dbQueue.push([{ id: "acct-1" }]);
       dbQueue.push([
         {
           id: "lbl-1",
-          userId: "user-1",
+          userId: "default",
           name: "Food",
           color: "#ef4444",
           createdAt: recentDate,
@@ -211,25 +207,25 @@ describe("transactions actions", () => {
 
       const byPeriod = Object.fromEntries(summaries.map((s) => [s.period, s]));
 
-      // 1d → 2 txs: spend 50, income 100, net +50
+      // 1d -> 2 txs: spend 50, income 100, net +50
       expect(byPeriod["1d"].spending).toBe(50);
       expect(byPeriod["1d"].income).toBe(100);
       expect(byPeriod["1d"].net).toBe(50);
       expect(byPeriod["1d"].transactionCount).toBe(2);
 
-      // 1w → 3 txs: spend 80, income 100, net +20
+      // 1w -> 3 txs: spend 80, income 100, net +20
       expect(byPeriod["1w"].spending).toBe(80);
       expect(byPeriod["1w"].income).toBe(100);
       expect(byPeriod["1w"].net).toBe(20);
       expect(byPeriod["1w"].transactionCount).toBe(3);
 
-      // 1m → all 4: spend 280, income 100, net -180
+      // 1m -> all 4: spend 280, income 100, net -180
       expect(byPeriod["1m"].spending).toBe(280);
       expect(byPeriod["1m"].income).toBe(100);
       expect(byPeriod["1m"].net).toBe(-180);
       expect(byPeriod["1m"].transactionCount).toBe(4);
 
-      // 1y → all 4 (same as 1m for this dataset)
+      // 1y -> all 4 (same as 1m for this dataset)
       expect(byPeriod["1y"].spending).toBe(280);
       expect(byPeriod["1y"].income).toBe(100);
       expect(byPeriod["1y"].transactionCount).toBe(4);
@@ -258,19 +254,19 @@ describe("transactions actions", () => {
     beforeEach(authed);
 
     it("returns empty when user has no accounts", async () => {
-      dbQueue.push([]); // accounts → empty
+      dbQueue.push([]); // accounts -> empty
 
       const r = await getTransactionsForPeriod(7);
       expect(r).toEqual({ transactions: [], topSpending: [], topIncome: [] });
     });
 
     it("returns transactions with account names and labels", async () => {
-      // accounts → labels → txList
+      // accounts -> labels -> txList
       dbQueue.push([{ id: "acct-1", name: "Checking" }]);
       dbQueue.push([
         {
           id: "lbl-1",
-          userId: "user-1",
+          userId: "default",
           name: "Food",
           color: "#ef4444",
           createdAt: recentDate,
@@ -402,15 +398,15 @@ describe("transactions actions", () => {
     beforeEach(authed);
 
     it("returns labels with associated rules", async () => {
-      // labels → rules
+      // labels -> rules
       dbQueue.push([
-        { id: "lbl-1", userId: "user-1", name: "Food", color: "#ef4444", createdAt: recentDate },
-        { id: "lbl-2", userId: "user-1", name: "Transport", color: "#3b82f6", createdAt: recentDate },
+        { id: "lbl-1", userId: "default", name: "Food", color: "#ef4444", createdAt: recentDate },
+        { id: "lbl-2", userId: "default", name: "Transport", color: "#3b82f6", createdAt: recentDate },
       ]);
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "Kroger",
@@ -418,7 +414,7 @@ describe("transactions actions", () => {
         },
         {
           id: "r2",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "Walmart",
@@ -441,7 +437,7 @@ describe("transactions actions", () => {
 
     it("handles labels with no rules", async () => {
       dbQueue.push([
-        { id: "lbl-1", userId: "user-1", name: "Misc", color: "#8b5cf6", createdAt: recentDate },
+        { id: "lbl-1", userId: "default", name: "Misc", color: "#8b5cf6", createdAt: recentDate },
       ]);
       dbQueue.push([]); // no rules
 
@@ -460,7 +456,7 @@ describe("transactions actions", () => {
     it("creates with specified color and returns the label", async () => {
       const created = {
         id: "mock-generated-id",
-        userId: "user-1",
+        userId: "default",
         name: "Food",
         color: "#22c55e",
         createdAt: recentDate,
@@ -477,7 +473,7 @@ describe("transactions actions", () => {
       dbQueue.push({ changes: 1 }); // insert
       dbQueue.push({
         id: "mock-generated-id",
-        userId: "user-1",
+        userId: "default",
         name: "Bills",
         color: "#ef4444",
         createdAt: recentDate,
@@ -487,20 +483,6 @@ describe("transactions actions", () => {
       expect(error).toBeUndefined();
       expect(label).toBeDefined();
       expect(label!.name).toBe("Bills");
-    });
-
-    it("uses generateIdFromEntropySize for the id", async () => {
-      dbQueue.push({ changes: 1 });
-      dbQueue.push({
-        id: "mock-generated-id",
-        userId: "user-1",
-        name: "Test",
-        color: "#3b82f6",
-        createdAt: recentDate,
-      });
-
-      await createLabel("Test", "#3b82f6");
-      expect(mockGenerateId).toHaveBeenCalledWith(10);
     });
   });
 
@@ -532,14 +514,13 @@ describe("transactions actions", () => {
     beforeEach(authed);
 
     it("labels a transaction successfully", async () => {
-      // get transaction → get account → update tx
+      // get transaction -> update tx
       dbQueue.push({
         id: "tx-1",
         accountId: "acct-1",
         payee: "Kroger",
         description: "Grocery",
       });
-      dbQueue.push({ userId: "user-1" }); // account ownership
       dbQueue.push({ changes: 1 }); // update
 
       const r = await labelTransaction("tx-1", "lbl-1");
@@ -547,35 +528,9 @@ describe("transactions actions", () => {
     });
 
     it("returns error when transaction not found", async () => {
-      dbQueue.push(undefined); // transaction .get() → not found
+      dbQueue.push(undefined); // transaction .get() -> not found
 
       const r = await labelTransaction("ghost", "lbl-1");
-      expect(r).toEqual({ success: false, error: "Transaction not found" });
-    });
-
-    it("returns error when user does not own the account", async () => {
-      dbQueue.push({
-        id: "tx-1",
-        accountId: "acct-1",
-        payee: "X",
-        description: "Y",
-      });
-      dbQueue.push({ userId: "other-user" }); // different owner
-
-      const r = await labelTransaction("tx-1", "lbl-1");
-      expect(r).toEqual({ success: false, error: "Transaction not found" });
-    });
-
-    it("returns error when account not found", async () => {
-      dbQueue.push({
-        id: "tx-1",
-        accountId: "acct-1",
-        payee: "X",
-        description: "Y",
-      });
-      dbQueue.push(undefined); // account .get() → null
-
-      const r = await labelTransaction("tx-1", "lbl-1");
       expect(r).toEqual({ success: false, error: "Transaction not found" });
     });
 
@@ -586,13 +541,11 @@ describe("transactions actions", () => {
         payee: "Kroger",
         description: "Grocery",
       });
-      dbQueue.push({ userId: "user-1" });
       dbQueue.push({ changes: 1 }); // update transaction
       dbQueue.push({ changes: 1 }); // insert rule
 
       const r = await labelTransaction("tx-1", "lbl-1", true);
       expect(r).toEqual({ success: true });
-      expect(mockGenerateId).toHaveBeenCalled();
     });
 
     it("does not create a rule when labelId is null", async () => {
@@ -602,7 +555,6 @@ describe("transactions actions", () => {
         payee: "Kroger",
         description: "Grocery",
       });
-      dbQueue.push({ userId: "user-1" });
       dbQueue.push({ changes: 1 }); // update tx (set labelId=null)
       // no insert-rule call expected
 
@@ -618,7 +570,7 @@ describe("transactions actions", () => {
     beforeEach(authed);
 
     it("returns 0 when no rules exist", async () => {
-      dbQueue.push([]); // rules → empty
+      dbQueue.push([]); // rules -> empty
 
       expect(await applyLabelRules()).toEqual({ applied: 0 });
     });
@@ -627,14 +579,14 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "Kroger",
           createdAt: recentDate,
         },
       ]);
-      dbQueue.push([]); // accounts → empty
+      dbQueue.push([]); // accounts -> empty
 
       expect(await applyLabelRules()).toEqual({ applied: 0 });
     });
@@ -643,7 +595,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "Kroger",
@@ -660,7 +612,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "kroger",
@@ -694,7 +646,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "description",
           matchPattern: "grocery",
@@ -720,7 +672,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "both",
           matchPattern: "coffee",
@@ -754,7 +706,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "store",
@@ -762,7 +714,7 @@ describe("transactions actions", () => {
         },
         {
           id: "r2",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-2",
           matchField: "payee",
           matchPattern: "store",
@@ -781,7 +733,7 @@ describe("transactions actions", () => {
       ]);
       dbQueue.push({ changes: 1 }); // only one update (first rule wins)
 
-      // Should be 1, not 2 — break after first match
+      // Should be 1, not 2 - break after first match
       expect((await applyLabelRules()).applied).toBe(1);
     });
 
@@ -789,7 +741,7 @@ describe("transactions actions", () => {
       dbQueue.push([
         {
           id: "r1",
-          userId: "user-1",
+          userId: "default",
           labelId: "lbl-1",
           matchField: "payee",
           matchPattern: "test",
@@ -806,7 +758,7 @@ describe("transactions actions", () => {
           labelId: null,
         },
       ]);
-      // No update expected — payee rule doesn't match when payee is null
+      // No update expected - payee rule doesn't match when payee is null
 
       expect((await applyLabelRules()).applied).toBe(0);
     });
@@ -823,7 +775,6 @@ describe("transactions actions", () => {
 
       const r = await createLabelRule("lbl-1", "grocery");
       expect(r).toEqual({ success: true });
-      expect(mockGenerateId).toHaveBeenCalledWith(10);
     });
 
     it("creates a rule with payee matchField", async () => {

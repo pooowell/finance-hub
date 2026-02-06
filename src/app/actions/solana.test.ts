@@ -36,11 +36,9 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/auth", () => ({
   validateRequest: vi.fn(),
+  DEFAULT_USER_ID: "default",
 }));
 
-vi.mock("lucia", () => ({
-  generateIdFromEntropySize: vi.fn(),
-}));
 
 vi.mock("@/lib/solana", () => ({
   getWalletData: vi.fn(),
@@ -64,7 +62,6 @@ import {
 } from "./solana";
 
 import { validateRequest } from "@/lib/auth";
-import { generateIdFromEntropySize } from "lucia";
 import {
   getWalletData,
   isValidSolanaAddress,

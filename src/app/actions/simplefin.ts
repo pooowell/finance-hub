@@ -1,9 +1,8 @@
 "use server";
 
 import { eq, and } from "drizzle-orm";
-import { generateIdFromEntropySize } from "lucia";
 import { revalidatePath } from "next/cache";
-import { validateRequest } from "@/lib/auth";
+import { validateRequest, DEFAULT_USER_ID } from "@/lib/auth";
 import { db, accounts, credentials, snapshots, transactions } from "@/lib/db";
 import type { Account } from "@/lib/db/schema";
 import {
@@ -13,7 +12,16 @@ import {
   transformTransactions,
   createSnapshot,
 } from "@/lib/simplefin";
-import { logger } from "@/lib/logger";
+
+// Generate a random ID (replaces lucia's generateIdFromEntropySize)
+function generateId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < 16; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
 
 /**
  * Connect a SimpleFIN account using a setup token
@@ -30,8 +38,8 @@ export async function connectSimpleFIN(setupToken: string) {
     let accessUrl: string;
     try {
       accessUrl = await claimSetupToken(setupToken);
-    } catch (claimError: unknown) {
-      logger.error('simplefin', 'SimpleFIN claim error', { error: claimError instanceof Error ? claimError.message : String(claimError) });
+    } catch (claimError) {
+      console.error("SimpleFIN claim error:", claimError);
       const message = claimError instanceof Error ? claimError.message : "Unknown error";
       return { error: `Failed to claim token: ${message}` };
     }
@@ -42,7 +50,7 @@ export async function connectSimpleFIN(setupToken: string) {
       .from(credentials)
       .where(
         and(
-          eq(credentials.userId, user.id),
+          eq(credentials.userId, DEFAULT_USER_ID),
           eq(credentials.provider, "SimpleFIN")
         )
       )
@@ -59,8 +67,8 @@ export async function connectSimpleFIN(setupToken: string) {
     } else {
       db.insert(credentials)
         .values({
-          id: generateIdFromEntropySize(10),
-          userId: user.id,
+          id: generateId(),
+          userId: DEFAULT_USER_ID,
           provider: "SimpleFIN",
           accessToken: accessUrl,
         })
@@ -75,8 +83,8 @@ export async function connectSimpleFIN(setupToken: string) {
 
     revalidatePath("/dashboard");
     return { success: true, accountCount: syncResult.accountCount };
-  } catch (error: unknown) {
-    logger.error('simplefin', 'SimpleFIN connection error', { error: error instanceof Error ? error.message : String(error) });
+  } catch (error) {
+    console.error("SimpleFIN connection error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Failed to connect SimpleFIN: ${message}` };
   }
@@ -99,7 +107,7 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
       .from(credentials)
       .where(
         and(
-          eq(credentials.userId, user.id),
+          eq(credentials.userId, DEFAULT_USER_ID),
           eq(credentials.provider, "SimpleFIN")
         )
       )
@@ -120,18 +128,18 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
     let accountSet;
     try {
       accountSet = await fetchAccounts({ accessUrl }, { startDate });
-    } catch (fetchError: unknown) {
-      logger.error('simplefin', 'SimpleFIN fetch error', { error: fetchError instanceof Error ? fetchError.message : String(fetchError) });
+    } catch (fetchError) {
+      console.error("SimpleFIN fetch error:", fetchError);
       const message = fetchError instanceof Error ? fetchError.message : "Unknown error";
       return { error: `Failed to fetch accounts: ${message}` };
     }
 
     if (accountSet.errors.length > 0) {
-      logger.warn('simplefin', 'SimpleFIN returned errors', { errors: accountSet.errors });
+      console.warn("SimpleFIN returned errors:", accountSet.errors);
     }
 
     // Transform accounts to our format
-    const transformedAccounts = transformAccounts(accountSet.accounts, user.id);
+    const transformedAccounts = transformAccounts(accountSet.accounts, DEFAULT_USER_ID);
 
     // Upsert accounts (update existing or insert new)
     for (let i = 0; i < transformedAccounts.length; i++) {
@@ -145,7 +153,7 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
         .from(accounts)
         .where(
           and(
-            eq(accounts.userId, user.id),
+            eq(accounts.userId, DEFAULT_USER_ID),
             eq(accounts.externalId, account.external_id ?? "")
           )
         )
@@ -171,7 +179,7 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
           const snapshot = createSnapshot(existingAccount.id, account.balance_usd ?? 0);
           db.insert(snapshots)
             .values({
-              id: generateIdFromEntropySize(10),
+              id: generateId(),
               accountId: snapshot.account_id,
               timestamp: snapshot.timestamp,
               valueUsd: snapshot.value_usd,
@@ -180,11 +188,11 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
         }
       } else {
         // Insert new account
-        accountId = generateIdFromEntropySize(10);
+        accountId = generateId();
         db.insert(accounts)
           .values({
             id: accountId,
-            userId: user.id,
+            userId: DEFAULT_USER_ID,
             provider: account.provider,
             name: account.name,
             type: account.type,
@@ -199,7 +207,7 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
         const snapshot = createSnapshot(accountId, account.balance_usd ?? 0);
         db.insert(snapshots)
           .values({
-            id: generateIdFromEntropySize(10),
+            id: generateId(),
             accountId: snapshot.account_id,
             timestamp: snapshot.timestamp,
             valueUsd: snapshot.value_usd,
@@ -242,7 +250,7 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
             // Insert new transaction
             db.insert(transactions)
               .values({
-                id: generateIdFromEntropySize(10),
+                id: generateId(),
                 accountId: tx.account_id,
                 externalId: tx.external_id,
                 postedAt: tx.posted_at,
@@ -260,8 +268,8 @@ export async function syncSimpleFINAccounts(accessUrl?: string) {
 
     revalidatePath("/dashboard");
     return { success: true, accountCount: transformedAccounts.length };
-  } catch (error: unknown) {
-    logger.error('simplefin', 'SimpleFIN sync error', { error: error instanceof Error ? error.message : String(error) });
+  } catch (error) {
+    console.error("SimpleFIN sync error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return { error: `Failed to sync accounts: ${message}` };
   }
@@ -285,7 +293,7 @@ export async function getSimpleFINAccounts(): Promise<{
     .from(accounts)
     .where(
       and(
-        eq(accounts.userId, user.id),
+        eq(accounts.userId, DEFAULT_USER_ID),
         eq(accounts.provider, "SimpleFIN")
       )
     )

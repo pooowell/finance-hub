@@ -16,8 +16,6 @@ import { getSimpleFINAccounts } from "@/app/actions/simplefin";
 import { getSolanaWallets } from "@/app/actions/solana";
 import { signout } from "@/lib/auth/actions";
 import type { Account } from "@/lib/db/schema";
-import { calculate24hChange, type ChartDataPoint } from "@/lib/portfolio";
-import { logger } from "@/lib/logger";
 
 interface PortfolioData {
   totalValueUsd: number;
@@ -25,6 +23,11 @@ interface PortfolioData {
   lastSynced: string | null;
   change24h: number;
   changePercent24h: number;
+}
+
+interface ChartDataPoint {
+  timestamp: string;
+  value: number;
 }
 
 export function DashboardContent() {
@@ -54,17 +57,12 @@ export function DashboardContent() {
           getSolanaWallets(),
         ]);
 
-      const { change24h, changePercent24h } = calculate24hChange(
-        historyResult,
-        portfolioResult.totalValueUsd,
-      );
-
       setPortfolioData({
         totalValueUsd: portfolioResult.totalValueUsd,
         accountCount: portfolioResult.accountCount,
         lastSynced: portfolioResult.lastSynced,
-        change24h,
-        changePercent24h,
+        change24h: 0, // TODO: Calculate from history
+        changePercent24h: 0,
       });
 
       setChartData(historyResult);
@@ -75,8 +73,8 @@ export function DashboardContent() {
         ...(solanaResult.accounts || []),
       ];
       setAccounts(allAccounts);
-    } catch (error: unknown) {
-      logger.error('DashboardContent', 'Error fetching dashboard data', { error: error instanceof Error ? error.message : String(error) });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
     } finally {
       setIsLoading(false);
     }
@@ -107,17 +105,12 @@ export function DashboardContent() {
             getSolanaWallets(),
           ]);
 
-        const { change24h, changePercent24h } = calculate24hChange(
-          historyResult,
-          portfolioResult.totalValueUsd,
-        );
-
         setPortfolioData({
           totalValueUsd: portfolioResult.totalValueUsd,
           accountCount: portfolioResult.accountCount,
           lastSynced: portfolioResult.lastSynced,
-          change24h,
-          changePercent24h,
+          change24h: 0,
+          changePercent24h: 0,
         });
 
         setChartData(historyResult);
@@ -127,8 +120,8 @@ export function DashboardContent() {
           ...(solanaResult.accounts || []),
         ];
         setAccounts(allAccounts);
-      } catch (error: unknown) {
-        logger.error('DashboardContent', 'Sync error', { error: error instanceof Error ? error.message : String(error) });
+      } catch (error) {
+        console.error("Sync error:", error);
       }
     });
   };
@@ -155,8 +148,8 @@ export function DashboardContent() {
           ...(solanaResult.accounts || []),
         ];
         setAccounts(allAccounts);
-      } catch (error: unknown) {
-        logger.error('DashboardContent', 'Error refreshing accounts', { error: error instanceof Error ? error.message : String(error) });
+      } catch (error) {
+        console.error("Error refreshing accounts:", error);
       }
     });
   };

@@ -3,10 +3,9 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 import path from "path";
 import fs from "fs";
-import { env } from "@/lib/env";
 
 const getDatabasePath = () => {
-  const dbPath = env.DATABASE_PATH;
+  const dbPath = process.env.DATABASE_PATH || "./data/finance-hub.db";
   // Resolve to absolute path
   const absolutePath = path.isAbsolute(dbPath)
     ? dbPath

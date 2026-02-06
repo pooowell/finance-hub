@@ -1,31 +1,12 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 
-// Users table (combines auth.users + profiles)
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  hashedPassword: text("hashed_password").notNull(),
-  fullName: text("full_name"),
-  avatarUrl: text("avatar_url"),
-  createdAt: text("created_at").notNull().default("(datetime('now'))"),
-  updatedAt: text("updated_at").notNull().default("(datetime('now'))"),
-});
-
-// Sessions table for Lucia auth
-export const sessions = sqliteTable("sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: integer("expires_at").notNull(),
-});
+// Default user ID for all data (single-user app)
+export const DEFAULT_USER_ID = "default";
 
 // Accounts table
 export const accounts = sqliteTable("accounts", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().default(DEFAULT_USER_ID),
   provider: text("provider").notNull(), // 'SimpleFIN' | 'Solana'
   name: text("name").notNull(),
   type: text("type").notNull().default("other"), // checking | savings | credit | investment | crypto | other
@@ -54,9 +35,7 @@ export const snapshots = sqliteTable("snapshots", {
 // Transaction labels table
 export const transactionLabels = sqliteTable("transaction_labels", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().default(DEFAULT_USER_ID),
   name: text("name").notNull(),
   color: text("color").notNull().default("#6366f1"),
   createdAt: text("created_at").notNull().default("(datetime('now'))"),
@@ -82,9 +61,7 @@ export const transactions = sqliteTable("transactions", {
 // Label rules table
 export const labelRules = sqliteTable("label_rules", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().default(DEFAULT_USER_ID),
   labelId: text("label_id")
     .notNull()
     .references(() => transactionLabels.id, { onDelete: "cascade" }),
@@ -96,9 +73,7 @@ export const labelRules = sqliteTable("label_rules", {
 // Credentials table (provider API tokens)
 export const credentials = sqliteTable("credentials", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().default(DEFAULT_USER_ID),
   provider: text("provider").notNull(),
   accessToken: text("access_token").notNull(),
   createdAt: text("created_at").notNull().default("(datetime('now'))"),
@@ -106,10 +81,6 @@ export const credentials = sqliteTable("credentials", {
 });
 
 // Export type aliases for inference
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type Session = typeof sessions.$inferSelect;
-export type NewSession = typeof sessions.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type Snapshot = typeof snapshots.$inferSelect;

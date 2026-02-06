@@ -1,9 +1,5 @@
 // Re-export types from Drizzle schema
 export type {
-  User,
-  NewUser,
-  Session,
-  NewSession,
   Account,
   NewAccount,
   Snapshot,

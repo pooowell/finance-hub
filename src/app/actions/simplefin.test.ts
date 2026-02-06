@@ -36,11 +36,9 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/auth", () => ({
   validateRequest: vi.fn(),
+  DEFAULT_USER_ID: "default",
 }));
 
-vi.mock("lucia", () => ({
-  generateIdFromEntropySize: vi.fn(),
-}));
 
 vi.mock("@/lib/simplefin", () => ({
   claimSetupToken: vi.fn(),
@@ -64,7 +62,6 @@ import {
 } from "./simplefin";
 
 import { validateRequest } from "@/lib/auth";
-import { generateIdFromEntropySize } from "lucia";
 import {
   claimSetupToken,
   fetchAccounts,
@@ -585,8 +582,8 @@ describe("SimpleFIN server actions", () => {
 
       expect(result).toEqual({ success: true, accountCount: 0 });
       expect(consoleSpy).toHaveBeenCalledWith(
-        "[WARN] simplefin: SimpleFIN returned errors",
-        { errors: ["Institution temporarily unavailable"] }
+        "SimpleFIN returned errors:",
+        ["Institution temporarily unavailable"]
       );
 
       consoleSpy.mockRestore();

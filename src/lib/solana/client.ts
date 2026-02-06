@@ -8,20 +8,9 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import type { SolanaTokenBalance, SolanaWalletData } from "@/types/solana";
 import { KNOWN_TOKENS } from "@/types/solana";
 import { getTokenPrices, getSolPrice } from "./prices";
-import { withRetry, SolanaInvalidAddressError } from "./retry";
-import { env } from "@/lib/env";
 
 // Default to public Solana mainnet RPC, can be overridden with env var
-const RPC_ENDPOINT = env.SOLANA_RPC_URL;
-
-/**
- * Result type for getMultipleWalletData — supports partial failures
- */
-export interface WalletDataResult {
-  address: string;
-  data?: SolanaWalletData;
-  error?: string;
-}
+const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 /**
  * Creates a Solana connection
@@ -43,18 +32,14 @@ export function isValidSolanaAddress(address: string): boolean {
 }
 
 /**
- * Fetches SOL balance for a wallet (with retry on transient errors)
+ * Fetches SOL balance for a wallet
  */
 export async function getSolBalance(
   connection: Connection,
   walletAddress: string
 ): Promise<{ lamports: number; sol: number }> {
-  if (!isValidSolanaAddress(walletAddress)) {
-    throw new SolanaInvalidAddressError(walletAddress);
-  }
-
   const publicKey = new PublicKey(walletAddress);
-  const lamports = await withRetry(() => connection.getBalance(publicKey));
+  const lamports = await connection.getBalance(publicKey);
   return {
     lamports,
     sol: lamports / LAMPORTS_PER_SOL,
@@ -62,24 +47,18 @@ export async function getSolBalance(
 }
 
 /**
- * Fetches all SPL token accounts for a wallet (with retry on transient errors)
+ * Fetches all SPL token accounts for a wallet
  */
 export async function getTokenAccounts(
   connection: Connection,
   walletAddress: string
 ): Promise<SolanaTokenBalance[]> {
-  if (!isValidSolanaAddress(walletAddress)) {
-    throw new SolanaInvalidAddressError(walletAddress);
-  }
-
   const publicKey = new PublicKey(walletAddress);
 
-  // Get all token accounts owned by this wallet (with retry)
-  const tokenAccounts = await withRetry(() =>
-    connection.getParsedTokenAccountsByOwner(publicKey, {
-      programId: TOKEN_PROGRAM_ID,
-    })
-  );
+  // Get all token accounts owned by this wallet
+  const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+    programId: TOKEN_PROGRAM_ID,
+  });
 
   const tokens: SolanaTokenBalance[] = [];
 
@@ -166,27 +145,13 @@ export async function getWalletData(walletAddress: string): Promise<SolanaWallet
 }
 
 /**
- * Fetches wallet data for multiple addresses with error isolation.
- * Uses Promise.allSettled so a single wallet failure doesn't break the batch.
- * Returns partial results with error info for failed wallets.
+ * Fetches wallet data for multiple addresses
  */
 export async function getMultipleWalletData(
   walletAddresses: string[]
-): Promise<WalletDataResult[]> {
-  const settled = await Promise.allSettled(
+): Promise<SolanaWalletData[]> {
+  const results = await Promise.all(
     walletAddresses.map((address) => getWalletData(address))
   );
-
-  return settled.map((result, index) => {
-    const address = walletAddresses[index];
-    if (result.status === "fulfilled") {
-      return { address, data: result.value };
-    }
-    return {
-      address,
-      error: result.reason instanceof Error
-        ? result.reason.message
-        : String(result.reason),
-    };
-  });
+  return results;
 }

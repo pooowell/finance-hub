@@ -1,10 +1,9 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { env } from "@/lib/env";
 
 const getDatabasePath = () => {
-  const dbPath = env.DATABASE_PATH;
+  const dbPath = process.env.DATABASE_PATH || "./data/finance-hub.db";
   const absolutePath = path.isAbsolute(dbPath)
     ? dbPath
     : path.resolve(process.cwd(), dbPath);
@@ -25,30 +24,12 @@ const migrate = () => {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
 
-  // Create tables
+  // Create tables (no users/sessions - single-user app with password auth)
   sqlite.exec(`
-    -- Users table (combines auth.users + profiles)
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      hashed_password TEXT NOT NULL,
-      full_name TEXT,
-      avatar_url TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    -- Sessions table for Lucia auth
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      expires_at INTEGER NOT NULL
-    );
-
     -- Accounts table
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL DEFAULT 'default',
       provider TEXT NOT NULL,
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'other',
@@ -75,7 +56,7 @@ const migrate = () => {
     -- Transaction labels table
     CREATE TABLE IF NOT EXISTS transaction_labels (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL DEFAULT 'default',
       name TEXT NOT NULL,
       color TEXT NOT NULL DEFAULT '#6366f1',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -100,7 +81,7 @@ const migrate = () => {
     -- Label rules table
     CREATE TABLE IF NOT EXISTS label_rules (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL DEFAULT 'default',
       label_id TEXT NOT NULL REFERENCES transaction_labels(id) ON DELETE CASCADE,
       match_field TEXT NOT NULL DEFAULT 'description',
       match_pattern TEXT NOT NULL,
@@ -110,7 +91,7 @@ const migrate = () => {
     -- Credentials table (provider API tokens)
     CREATE TABLE IF NOT EXISTS credentials (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL DEFAULT 'default',
       provider TEXT NOT NULL,
       access_token TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -130,7 +111,6 @@ const migrate = () => {
     CREATE INDEX IF NOT EXISTS idx_label_rules_user_id ON label_rules(user_id);
     CREATE INDEX IF NOT EXISTS idx_label_rules_label_id ON label_rules(label_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_user_id ON credentials(user_id);
-    CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
   `);
 
   console.log("Migration completed successfully!");

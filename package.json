@@ -18,8 +18,8 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@lucia-auth/adapter-sqlite": "^3.0.2",
-    "@node-rs/argon2": "^2.0.2",
+    
+    
     "@radix-ui/react-slot": "^1.2.4",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
@@ -27,14 +27,13 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.1",
-    "lucia": "^3.2.2",
+    
     "lucide-react": "^0.562.0",
     "next": "^14.2.21",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.6.0",
-    "tailwind-merge": "^3.4.0",
-    "zod": "^4.3.6"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

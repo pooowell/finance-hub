@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { ArrowRightLeft, ArrowUpRight, ArrowDownLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRecentTransactions, type TransactionWithAccount } from "@/app/actions/accounts";
-import { logger } from "@/lib/logger";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -32,8 +31,8 @@ export function RecentTransactions() {
       try {
         const result = await getRecentTransactions(10);
         setTransactions(result.transactions);
-      } catch (error: unknown) {
-        logger.error('RecentTransactions', 'Error fetching transactions', { error: error instanceof Error ? error.message : String(error) });
+      } catch (error) {
+        console.error("Error fetching transactions:", error);
       } finally {
         setIsLoading(false);
       }

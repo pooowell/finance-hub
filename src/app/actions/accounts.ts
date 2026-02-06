@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { eq, inArray, desc } from "drizzle-orm";
-import { validateRequest } from "@/lib/auth";
+import { validateRequest, DEFAULT_USER_ID } from "@/lib/auth";
 import { db, accounts, transactions } from "@/lib/db";
 import type { AccountCategory } from "@/types/database";
 import type { Transaction } from "@/lib/db/schema";
@@ -27,19 +27,15 @@ export async function updateAccount(
     return { success: false, error: "Unauthorized" };
   }
 
-  // Verify user owns this account
+  // Verify account exists
   const account = db
-    .select({ id: accounts.id, userId: accounts.userId })
+    .select({ id: accounts.id })
     .from(accounts)
     .where(eq(accounts.id, accountId))
     .get();
 
   if (!account) {
     return { success: false, error: "Account not found" };
-  }
-
-  if (account.userId !== user.id) {
-    return { success: false, error: "Unauthorized" };
   }
 
   // Update the account
@@ -74,11 +70,11 @@ export async function getRecentTransactions(
     return { transactions: [], error: "Unauthorized" };
   }
 
-  // Get user's account IDs
+  // Get all accounts (single user app)
   const userAccounts = db
     .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
-    .where(eq(accounts.userId, user.id))
+    .where(eq(accounts.userId, DEFAULT_USER_ID))
     .all();
 
   if (userAccounts.length === 0) {
@@ -131,11 +127,11 @@ export async function getAllTransactions(): Promise<TransactionsData> {
     return { transactions: [], summaries: [], error: "Unauthorized" };
   }
 
-  // Get user's account IDs
+  // Get all accounts (single user app)
   const userAccounts = db
     .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
-    .where(eq(accounts.userId, user.id))
+    .where(eq(accounts.userId, DEFAULT_USER_ID))
     .all();
 
   if (userAccounts.length === 0) {

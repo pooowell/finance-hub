@@ -2,7 +2,7 @@
 
 import { eq, inArray, and, gte, lte, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { validateRequest } from "@/lib/auth";
+import { validateRequest, DEFAULT_USER_ID } from "@/lib/auth";
 import { db, accounts, snapshots } from "@/lib/db";
 import { syncSimpleFINAccounts } from "./simplefin";
 import { syncSolanaWallets } from "./solana";
@@ -81,7 +81,7 @@ export async function getTotalPortfolioValue(): Promise<{
     .from(accounts)
     .where(
       and(
-        eq(accounts.userId, user.id),
+        eq(accounts.userId, DEFAULT_USER_ID),
         eq(accounts.includeInNetWorth, true)
       )
     )
@@ -124,13 +124,13 @@ export async function getPortfolioHistory(options?: {
     return [];
   }
 
-  // Get user's account IDs (only those included in net worth)
+  // Get all account IDs (only those included in net worth)
   const userAccounts = db
     .select({ id: accounts.id })
     .from(accounts)
     .where(
       and(
-        eq(accounts.userId, user.id),
+        eq(accounts.userId, DEFAULT_USER_ID),
         eq(accounts.includeInNetWorth, true)
       )
     )
